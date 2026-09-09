@@ -79,13 +79,82 @@ def theme():
     return resolve("dark")
 
 
+class FakeModule:
+    """A minimal module object speaking the whole contract."""
+
+    def __init__(self, module_id, title=None, config_schema=None,
+                 actions=None, interval=0):
+        self.id = module_id
+        self.title = title or module_id.upper()
+        self.interval = interval
+        self.config_schema = config_schema
+        self.actions = actions or []
+
+    def render(self, draw, ctx):
+        return True
+
+    def on_tap(self, x, y, ctx):
+        return False
+
+    def status_items(self, ctx):
+        return []
+
+    def on_action(self, action_id, ctx):
+        pass
+
+
 @pytest.fixture
-def make_app(theme, fonts):
-    def _make(touch_script=None, mono=1000.0, wall=1_700_000_000.0):
+def fake_module():
+    return FakeModule
+
+
+@pytest.fixture
+def config(tmp_path):
+    from wintermode.config import Config
+
+    return Config(tmp_path / "config.json")
+
+
+@pytest.fixture
+def registry(config, fake_module):
+    from wintermode.registry import Registry
+
+    def _make(ids):
+        return Registry([fake_module(i) for i in ids], config)
+
+    return _make
+
+
+@pytest.fixture
+def make_app(theme, fonts, config, fake_module):
+    from wintermode.registry import Registry
+
+    def _make(touch_script=None, mono=1000.0, wall=1_700_000_000.0,
+              registry=None):
         lcd = FakeLCD()
         touch = ScriptedTouch(touch_script or [])
         clock = FakeClock(mono, wall)
-        app = WinterApp(lcd, touch, theme, fonts, clock=clock)
+        if registry is None:
+            registry = Registry([fake_module("clock"), fake_module("dummy")],
+                                config)
+        app = WinterApp(lcd, touch, theme, fonts, clock=clock,
+                        config=config, registry=registry)
         return app, lcd, touch, clock
+
+    return _make
+
+
+@pytest.fixture
+def ctx(theme, fonts, config):
+    from wintermode.context import Ctx, Nav
+    from wintermode.views import HomeView
+
+    def _make(registry=None):
+        nav = Nav(HomeView(registry=registry, config=config))
+        return Ctx(
+            theme=theme, fonts=fonts, nav=nav,
+            content=(0, 28, 800, 480), width=800, height=480,
+            config=config, registry=registry,
+        )
 
     return _make

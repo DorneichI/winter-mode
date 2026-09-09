@@ -1,0 +1,6 @@
+{
+  "theme": "dark",
+  "modules": [],
+  "statusbar": {},
+  "display": {"mode": "always_on", "idle_seconds": 60}
+}

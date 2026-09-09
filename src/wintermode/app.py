@@ -21,8 +21,10 @@ from PIL import Image, ImageDraw
 
 from wintermode import __version__
 from wintermode.boot import play_boot
+from wintermode.config import Config
 from wintermode.context import Ctx, Nav
 from wintermode.fonts import Fonts
+from wintermode.registry import Registry, discover
 from wintermode.taps import TapTracker
 from wintermode.theme import Theme, resolve
 from wintermode.views import HomeView
@@ -53,16 +55,20 @@ class WinterApp:
         theme: Theme,
         fonts: Fonts,
         clock: Callable[[], tuple[float, float]] | None = None,
+        config=None,
+        registry=None,
     ) -> None:
         self.lcd = lcd
         self.touch = touch
         self.theme = theme
         self.fonts = fonts
+        self.config = config
+        self.registry = registry
         # clock() -> (monotonic, wall); injectable so tests control time
         self.clock = clock or (lambda: (time.monotonic(), time.time()))
         self.canvas = Image.new("RGB", (lcd.width, lcd.height), theme.bg)
         self.draw = ImageDraw.Draw(self.canvas)
-        self.nav = Nav(HomeView())
+        self.nav = Nav(HomeView(registry=registry, config=config))
         self.tracker = TapTracker()
         self.last_second: int | None = None
         self._bar_hitboxes: list[tuple[tuple[int, int, int, int], str]] = []
@@ -79,6 +85,8 @@ class WinterApp:
             height=self.lcd.height,
             points=points,
             now=now,
+            config=self.config,
+            registry=self.registry,
         )
 
     # --- bar --------------------------------------------------------------
@@ -150,7 +158,11 @@ class WinterApp:
                     dirty |= self._bar_tap(x)
                 continue
             if kind == "tap":
-                dirty |= bool(self.nav.top.on_tap(x, y, self._ctx(now, points)))
+                if self.nav.top.on_tap(x, y, self._ctx(now, points)):
+                    # a consumed tap may have changed view state (page
+                    # flip, form value) — re-render the content area
+                    self._render_content(now, points)
+                    dirty = True
 
         if self.nav.changed:
             self.nav.changed = False
@@ -177,18 +189,20 @@ class WinterApp:
 
 
 def main() -> None:
-    _parse_args()  # --config is wired up when the config layer lands
+    args = _parse_args()
     logging.basicConfig(
         level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
     )
+    config = Config(args.config or Path("config.json"))
+    registry = Registry(discover(), config)
+    registry.validate_namespaces()
     # Touch must close before Display (the bus is single-owner), so Touch
     # is opened first in the with-statement.
     with Display() as lcd, Touch(lcd.bus) as touch:
-        # config.json lands in a later step; dark is the default for now
-        theme = resolve("dark")
+        theme = resolve(config.data["theme"])
         fonts = Fonts()
         play_boot(lcd, theme, fonts, __version__)
-        WinterApp(lcd, touch, theme, fonts).run()
+        WinterApp(lcd, touch, theme, fonts, config=config, registry=registry).run()
 
 
 if __name__ == "__main__":
