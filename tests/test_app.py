@@ -17,6 +17,18 @@ def test_first_step_renders_and_presents_once(make_app):
     app, lcd, _touch, _clock = make_app()
     assert present(app, lcd) is True
     assert len(lcd.calls) == 1
+    # the first frame paints the home grid, not just the bar
+    colors = {c for _n, c in app.canvas.crop((0, BAR_H, 800, 480)).getcolors()}
+    assert app.theme.border in colors  # card borders are drawn
+
+
+def test_first_frame_was_the_regression(make_app):
+    # the bar tick used to be the only thing painted on frame one;
+    # the content area must never stay blank at startup
+    app, lcd, _touch, _clock = make_app()
+    present(app, lcd)
+    assert app.canvas.getpixel((400, 400)) == app.theme.bg  # background
+    assert len(lcd.calls) == 1
 
 
 def test_noop_step_presents_nothing(make_app):
@@ -109,3 +121,104 @@ def test_nav_changed_flag_drives_redraw():
     nav.changed = False
     nav.pop()  # nothing to pop
     assert nav.changed is False
+
+
+def test_theme_change_in_config_retunes_live(make_app):
+    app, lcd, _touch, _clock = make_app()
+    present(app, lcd)
+    app.config.update({"theme": "light"})
+    assert app._step() is True  # full re-render on generation change
+    assert app.theme.name == "light"
+    assert app.canvas.getpixel((400, 5)) == app.theme.bg
+
+
+def test_module_interval_render_runs_and_presents(make_app, fake_module):
+    app, lcd, touch, clock = make_app()
+    present(app, lcd)
+    module = fake_module("clock", interval=1)
+    app.nav.push(module)
+    present(app, lcd)
+    clock.set(1002.0, 1_700_000_002.0)  # beyond the refresh deadline
+    assert app._step() is True  # interval render returned True
+    clock.set(1003.0, 1_700_000_003.0)
+    assert app._step() is True  # module interval ticked again
+
+
+def test_statusbar_toggle_hides_module_items(make_app, fake_module):
+    from wintermode.context import BarItem
+
+    class Chatty(fake_module):
+        def status_items(self, ctx):
+            return [BarItem("CHATTER")]
+
+    app, lcd, touch, clock = make_app()
+    present(app, lcd)
+    app.registry._all["dummy"] = Chatty("dummy")
+    # the bar redraws once a second — tick the wall clock to repaint it
+    clock.set(1001.0, 1_700_000_001.0)
+    present(app, lcd)
+
+    def dim_pixels_in_bar():
+        return any(
+            app.canvas.getpixel((x, 15)) == app.theme.dim
+            for x in range(0, 400)
+        )
+
+    assert dim_pixels_in_bar()  # CHATTER is shown
+    app.config.update({"statusbar": {"dummy": False}})
+    app._step()
+    assert not dim_pixels_in_bar()  # hidden by the toggle
+
+
+def test_rotate_items_cycles_one_at_a_time():
+    from wintermode.app import _rotate_items
+    items = ["a", "b", "c"]
+    assert _rotate_items(items, 0.0, 10) == ["a"]
+    assert _rotate_items(items, 10.0, 10) == ["b"]
+    assert _rotate_items(items, 20.0, 10) == ["c"]
+    assert _rotate_items(items, 30.0, 10) == ["a"]  # wraps
+    assert _rotate_items(items, 5.0, 0) == items  # rotation off
+    assert _rotate_items([], 5.0, 10) == []
+
+
+def test_auto_theme_flips_on_minute_boundary(make_app):
+    import time as _t
+
+    night = _t.mktime((2023, 11, 14, 23, 0, 0, 0, 0, -1))
+    noon = _t.mktime((2023, 11, 14, 12, 0, 0, 0, 0, -1))
+    app, lcd, _touch, clock = make_app()
+    present(app, lcd)
+    app.config.update({"theme": "auto",
+                       "display": {"light_from": "07:00",
+                                   "light_to": "19:00"}})
+    clock.set(1001.0, night)
+    assert app._step() is True  # generation change re-themes
+    assert app.theme.name == "dark"
+    # jump to noon: the minute boundary flips to light without any save
+    clock.set(1002.0, noon)
+    assert app._step() is True
+    assert app.theme.name == "light"
+    assert app.canvas.getpixel((400, 5)) == app.theme.bg
+
+
+def test_config_writing_tap_retunes_in_one_frame(make_app, point):
+    # a tap that saves config must produce ONE re-themed frame:
+    # the form must never render under the old theme in between
+    renders = []
+
+    class ThemeTap:
+        title = "TAP"
+
+        def render(self, draw, ctx):
+            renders.append(ctx.theme.name)
+
+        def on_tap(self, x, y, ctx):
+            ctx.config.update({"theme": "light"})
+            return True
+
+    app, lcd, touch, _clock = make_app(touch_script=[[point(400, 300)], []])
+    app.nav.push(ThemeTap())
+    app._step()  # initial render + finger down
+    app._step()  # release: writes config -> one frame with light theme
+    assert app.theme.name == "light"
+    assert renders == ["dark", "light"]  # initial, then the themed frame

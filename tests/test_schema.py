@@ -78,3 +78,34 @@ def test_step_clamps_at_bounds():
     assert schema.step_int(spec, 0, -1) == 0
     assert schema.step_int(spec, 99, 1) == 99
     assert schema.step_int(spec, 41, 1) == 42
+
+
+def test_time_type_accepts_valid_and_rejects_garbage(caplog):
+    from wintermode.schema import validate
+    assert validate({"t": {"type": "time", "default": "07:00"}},
+                    {"t": "23:59"}) == {"t": "23:59"}
+    assert validate({"t": {"type": "time", "default": "07:00"}},
+                    {"t": "25:00"}) == {"t": "07:00"}
+    assert validate({"t": {"type": "time", "default": "07:00"}},
+                    {"t": "7:30"}) == {"t": "07:00"}
+    assert validate({"t": {"type": "time", "default": "07:00"}},
+                    {"t": None}) == {"t": "07:00"}
+
+
+def test_step_time_bumps_and_wraps():
+    from wintermode.schema import step_time
+    assert step_time("07:00", "hour", 1) == "08:00"
+    assert step_time("23:00", "hour", 1) == "00:00"
+    assert step_time("00:00", "hour", -1) == "23:00"
+    assert step_time("07:00", "minute", 1) == "07:05"
+    assert step_time("07:55", "minute", 1) == "07:00"
+    assert step_time("07:00", "minute", -1) == "07:55"
+
+
+def test_visible_if_conditions():
+    from wintermode.schema import visible
+    spec = {"type": "time", "visible_if": {"field": "theme", "equals": "auto"}}
+    assert visible(spec, {"theme": "auto"}) is True
+    assert visible(spec, {"theme": "dark"}) is False
+    assert visible(spec, {}) is False  # field missing -> not shown
+    assert visible({"type": "time"}, {"theme": "auto"}) is True  # no condition

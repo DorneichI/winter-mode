@@ -57,6 +57,28 @@ def draw_button(
     return rect
 
 
+def draw_button_auto(
+    draw,
+    anchor_x1: int,
+    y0: int,
+    height: int,
+    label: str,
+    fonts: Fonts,
+    theme: Theme,
+    weight: str = "regular",
+    size: int = SIZE_CARD,
+    pressed: bool = False,
+    pad: int = 12,
+    min_width: int = 40,
+) -> Rect:
+    """A right-anchored button sized to its label; returns its rect."""
+    width = max(min_width, fonts.textwidth(label, weight, size) + 2 * pad)
+    rect = (anchor_x1 - width, y0, anchor_x1, y0 + height)
+    draw_button(draw, rect, label, fonts, theme, weight=weight, size=size,
+                pressed=pressed)
+    return rect
+
+
 def draw_paginator(
     draw,
     strip: Rect,

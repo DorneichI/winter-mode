@@ -1,8 +1,8 @@
-"""HomeView: the card grid, pagination, and tap-to-push."""
+"""Framework views: card grids, auto-generated forms, info rows."""
 
 from PIL import Image, ImageDraw
 
-from wintermode.views import CARD_PAGE_SIZE, HomeView
+from wintermode.views import CARD_PAGE_SIZE, FormView, HomeView, InfoView
 
 
 def make_canvas(theme):
@@ -85,3 +85,175 @@ def test_tap_outside_cards_and_paginator_is_unconsumed(
     registry = registry(["clock"])
     view, canvas, ctx = render_home(theme, fonts, ctx, registry=registry)
     assert view.on_tap(799, 479, ctx) is False
+
+
+# --- FormView -------------------------------------------------------------
+
+SCHEMA = {
+    "flag": {"type": "bool", "title": "Flag", "default": False},
+    "mode": {"type": "choice", "title": "Mode",
+             "options": ["count", "wave"], "default": "count"},
+    "count": {"type": "int", "title": "Count", "min": 0, "max": 5,
+              "default": 0},
+    "note": {"type": "text", "title": "Note", "default": "hello"},
+}
+
+
+def make_form(ctx):
+    values = {"flag": False, "mode": "count", "count": 0, "note": "hello"}
+    writes = []
+
+    def set_value(key, value):
+        writes.append((key, value))
+        values[key] = value
+
+    view = FormView("TEST", SCHEMA, lambda: dict(values), set_value)
+    canvas, draw = make_canvas(ctx.theme)
+    view.render(draw, ctx)
+    return view, writes, values
+
+
+def tap_row(view, ctx, key, action):
+    for rect, row_key, row_action in view._rows:
+        if row_key == key and row_action == action:
+            x, y = (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
+            assert view.on_tap(x, y, ctx) is True
+            return
+    raise AssertionError(f"no {action!r} row for {key!r}")
+
+
+def test_form_toggle_writes_once(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view, writes, values = make_form(c)
+    tap_row(view, c, "flag", "toggle")
+    assert writes == [("flag", True)]
+    assert values["flag"] is True
+
+
+def test_form_choice_cycles(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view, writes, values = make_form(c)
+    tap_row(view, c, "mode", "cycle")
+    assert writes == [("mode", "wave")]
+    tap_row(view, c, "mode", "cycle")
+    assert writes[-1] == ("mode", "count")  # wraps
+
+
+def test_form_stepper_clamps_at_bounds(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view, writes, values = make_form(c)
+    tap_row(view, c, "count", "minus")  # already at 0: no write
+    assert writes == []
+    tap_row(view, c, "count", "plus")
+    assert writes == [("count", 1)]
+
+
+def test_form_text_row_is_read_only(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view, writes, values = make_form(c)
+    # the text row (4th field) has no hitbox: a tap over its value
+    # area is unconsumed
+    assert view.on_tap(750, 180, c) is False
+    assert writes == []
+
+
+def test_form_rows_fit_in_content(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view, writes, values = make_form(c)
+    for (x0, y0, x1, y1), _key, _action in view._rows:
+        assert c.content[0] <= x0 and x1 <= c.content[2]
+        assert c.content[1] <= y0 and y1 <= c.content[3]
+
+
+# --- InfoView -------------------------------------------------------------
+
+
+def test_infoview_draws_label_and_value(theme, fonts, ctx):
+    ctx = ctx(registry=None)
+    view = InfoView("DEVICE", [("VERSION", lambda: "0.1.0")])
+    canvas, draw = make_canvas(theme)
+    view.render(draw, ctx)
+    row = canvas.crop((ctx.content[0], ctx.content[1] + 10,
+                       ctx.content[2], ctx.content[1] + 46))
+    colors = {c for _n, c in row.getcolors()}
+    assert theme.dim in colors  # the label
+    assert theme.fg in colors  # the value
+
+
+def test_form_int_steppers_are_equal_size(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view, _writes, _values = make_form(c)
+    minus = plus = None
+    for rect, key, action in view._rows:
+        if key == "count" and action == "minus":
+            minus = rect
+        if key == "count" and action == "plus":
+            plus = rect
+    assert minus and plus
+    assert minus[2] - minus[0] == plus[2] - plus[0]  # identical widths
+
+
+def test_form_choice_label_says_next(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view, _writes, values = make_form(c)
+    view.render(ImageDraw.Draw(Image.new("RGB", (800, 480))), c)
+    # the choice button sizes itself to its "[next ›]" label exactly
+    for rect, key, _action in view._rows:
+        if key == "mode":
+            label = f"{values['mode']} [next ›]"
+            expected = c.fonts.textwidth(label, "regular", 26) + 24
+            assert rect[2] - rect[0] == expected
+            return
+    raise AssertionError("no cycle row")
+
+
+def test_form_time_row_steps_and_wraps(theme, fonts, ctx):
+    c = ctx(registry=None)
+    schema = {"t": {"type": "time", "title": "Wake", "default": "07:00"}}
+    values = {"t": "07:00"}
+    writes = []
+
+    def set_value(key, value):
+        writes.append((key, value))
+        values[key] = value
+
+    view = FormView("T", schema, lambda: dict(values), set_value)
+    view.render(ImageDraw.Draw(Image.new("RGB", (800, 480))), c)
+    actions = {action for _r, _k, action in view._rows}
+    assert actions == {"hour-", "hour+", "minute-", "minute+"}
+    tap_row(view, c, "t", "minute+")
+    assert writes == [("t", "07:05")]
+    tap_row(view, c, "t", "hour-")
+    assert writes[-1] == ("t", "06:05")
+
+
+def test_form_hides_conditional_fields(theme, fonts, ctx):
+    c = ctx(registry=None)
+    schema = {
+        "theme": {"type": "choice", "title": "Theme",
+                  "options": ["dark", "auto"], "default": "dark"},
+        "light_from": {"type": "time", "title": "Light from",
+                       "default": "07:00",
+                       "visible_if": {"field": "theme", "equals": "auto"}},
+    }
+    values = {"theme": "dark", "light_from": "07:00"}
+    writes = []
+
+    def set_value(key, value):
+        writes.append((key, value))
+        values[key] = value
+
+    view = FormView("T", schema, lambda: dict(values), set_value)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    keys = {key for _rect, key, _action in view._rows}
+    assert keys == {"theme"}  # light_from hidden while theme is dark
+
+    tap_row(view, c, "theme", "cycle")  # -> auto
+    view.render(draw, c)  # the app re-renders after a consumed tap
+    keys = {key for _rect, key, _action in view._rows}
+    assert keys == {"theme", "light_from"}  # now it appears
+
+    # the value survives hidden periods — it is never deleted
+    assert values["light_from"] == "07:00"
+    assert writes == [("theme", "auto")]

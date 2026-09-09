@@ -26,12 +26,20 @@ from wintermode.context import Ctx, Nav
 from wintermode.fonts import SIZE_BAR, Fonts
 from wintermode.registry import Registry, discover
 from wintermode.taps import TapTracker
-from wintermode.theme import Theme, resolve
+from wintermode.theme import Theme, effective_theme
 from wintermode.views import HomeView
 
 log = logging.getLogger(__name__)
 
 BAR_H = 30  # persistent top bar height
+
+
+def _rotate_items(items: list, wall: float, rotate_seconds: int) -> list:
+    """Status-bar rotation: one item at a time; 0 disables rotation."""
+    if not items or rotate_seconds <= 0:
+        return items
+    index = int(wall) // max(1, rotate_seconds) % len(items)
+    return [items[index]]
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -68,13 +76,17 @@ class WinterApp:
         self.canvas = Image.new("RGB", (lcd.width, lcd.height), theme.bg)
         self.draw = ImageDraw.Draw(self.canvas)
         self.nav = Nav(HomeView(registry=registry, config=config))
+        self.nav.changed = True  # the first loop pass paints the initial frame
         self.tracker = TapTracker()
         self.last_second: int | None = None
+        self.last_minute: int | None = None
+        self.last_gen = config.generation if config else 0
+        self._next_refresh = 0.0
         self._bar_hitboxes: list[tuple[tuple[int, int, int, int], str]] = []
 
     # --- context ----------------------------------------------------------
 
-    def _ctx(self, now: float, points) -> Ctx:
+    def _ctx(self, now: float, points, wall: float) -> Ctx:
         return Ctx(
             theme=self.theme,
             fonts=self.fonts,
@@ -84,13 +96,14 @@ class WinterApp:
             height=self.lcd.height,
             points=points,
             now=now,
+            wall=wall,
             config=self.config,
             registry=self.registry,
         )
 
     # --- bar --------------------------------------------------------------
 
-    def _draw_bar(self, wall: float) -> None:
+    def _draw_bar(self, now: float, points, wall: float) -> None:
         draw = self.draw
         theme = self.theme
         width = self.lcd.width
@@ -100,6 +113,26 @@ class WinterApp:
         clock_text = time.strftime("%H:%M:%S", time.localtime(wall))
         self.fonts.draw_text(draw, (8, 5), clock_text, "regular", SIZE_BAR,
                              theme.fg)
+
+        # status items published by enabled modules (rotating), up to
+        # the title zone
+        x = 8 + self.fonts.textwidth(clock_text, "regular", SIZE_BAR) + 16
+        if self.registry and self.config:
+            ctx = self._ctx(now, points, wall)
+            items = []
+            for module in self.registry.home_order():
+                if not self.config.data["statusbar"].get(module.id, True):
+                    continue
+                items.extend(module.status_items(ctx))
+            rotate = self.config.data.get("statusbar_rotate", 0)
+            for item in _rotate_items(items, wall, rotate):
+                label = f"[{item.text}]"
+                label_w = self.fonts.textwidth(label, "regular", SIZE_BAR)
+                if x + label_w > width // 2 - 80:
+                    break  # the bar is full; the title zone is sacred
+                self.fonts.draw_text(draw, (x, 5), label, "regular",
+                                     SIZE_BAR, theme.dim)
+                x += label_w + 12
 
         title = getattr(self.nav.top, "title", "HOME")
         self.fonts.draw_text(
@@ -136,14 +169,15 @@ class WinterApp:
 
     # --- main loop ---------------------------------------------------------
 
-    def _render_content(self, now: float, points) -> None:
-        self.nav.top.render(self.draw, self._ctx(now, points))
+    def _render_content(self, now: float, points, wall: float) -> None:
+        self.nav.top.render(self.draw, self._ctx(now, points, wall))
 
     def _step(self) -> bool:
         """One loop pass.  Returns True when the canvas changed."""
         now, wall = self.clock()
         points = self.touch.read(mapped=True)
         dirty = False
+        rerender_content = False
 
         events = self.tracker.update(points, now)
         for kind, x, y in events:
@@ -152,22 +186,61 @@ class WinterApp:
                     dirty |= self._bar_tap(x)
                 continue
             if kind == "tap":
-                if self.nav.top.on_tap(x, y, self._ctx(now, points)):
+                if self.nav.top.on_tap(x, y, self._ctx(now, points, wall)):
                     # a consumed tap may have changed view state (page
-                    # flip, form value) — re-render the content area
-                    self._render_content(now, points)
+                    # flip, form value) — re-render the content area.
+                    # Deferred: if the tap also saved config, the
+                    # generation watcher below re-themes AND re-renders
+                    # in ONE frame instead of two.
+                    rerender_content = True
                     dirty = True
 
         if self.nav.changed:
             self.nav.changed = False
-            self._render_content(now, points)
-            self._draw_bar(wall)
+            self._next_refresh = now
+            self._render_content(now, points, wall)
+            self._draw_bar(now, points, wall)
             dirty = True
+            rerender_content = False
+
+        # live config reload AFTER touch processing: a config-writing
+        # tap lands as a single re-themed frame, not form-then-theme
+        if self.config and self.config.generation != self.last_gen:
+            self.last_gen = self.config.generation
+            self.theme = effective_theme(self.config, wall)
+            self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height),
+                                fill=self.theme.bg)
+            self._render_content(now, points, wall)
+            self._draw_bar(now, points, wall)
+            return True
+
+        if rerender_content:
+            self._render_content(now, points, wall)
+
+        # module refresh interval (e.g. the clock's once-a-second render)
+        top = self.nav.top
+        if getattr(top, "interval", 0) and now >= self._next_refresh:
+            self._next_refresh = now + top.interval
+            if top.render(self.draw, self._ctx(now, points, wall)):
+                dirty = True
 
         if self.last_second != int(wall):
             self.last_second = int(wall)
-            self._draw_bar(wall)
+            self._draw_bar(now, points, wall)
             dirty = True
+
+        # the auto theme schedule flips light/dark on minute boundaries
+        minute = int(wall) // 60
+        if self.last_minute != minute:
+            self.last_minute = minute
+            theme = effective_theme(self.config, wall)
+            if theme is not self.theme:
+                self.theme = theme
+                self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height),
+                                    fill=self.theme.bg)
+                self._render_content(now, points, wall)
+                self._draw_bar(now, points, wall)
+                dirty = True
 
         return dirty
 
@@ -193,7 +266,7 @@ def main() -> None:
     # Touch must close before Display (the bus is single-owner), so Touch
     # is opened first in the with-statement.
     with Display() as lcd, Touch(lcd.bus) as touch:
-        theme = resolve(config.data["theme"])
+        theme = effective_theme(config, time.time())
         fonts = Fonts()
         play_boot(lcd, theme, fonts, __version__)
         WinterApp(lcd, touch, theme, fonts, config=config, registry=registry).run()

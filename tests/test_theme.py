@@ -1,4 +1,6 @@
-"""Theme tokens, the font cache, and the 1-bit text path."""
+"""Theme tokens, the auto schedule, the font cache, the 1-bit text path."""
+
+import time
 
 import pytest
 from PIL import Image, ImageDraw
@@ -13,11 +15,16 @@ from wintermode.fonts import (
     SIZE_PAGINATOR,
     Fonts,
 )
-from wintermode.theme import THEMES, resolve
+from wintermode.theme import THEMES, effective_theme, resolve
 
 
-def test_themes_are_exactly_dark_light_night():
-    assert set(THEMES) == {"dark", "light", "night"}
+class _Cfg:
+    def __init__(self, **data):
+        self.data = data
+
+
+def test_themes_are_exactly_dark_light():
+    assert set(THEMES) == {"dark", "light"}
 
 
 def test_tokens_are_valid_rgb_triples():
@@ -27,16 +34,36 @@ def test_tokens_are_valid_rgb_triples():
             assert all(isinstance(c, int) and 0 <= c <= 255 for c in token)
 
 
-def test_night_palette_is_warm_and_distinct():
-    night = THEMES["night"]
-    assert night.bg != THEMES["dark"].bg
-    assert night.fg[0] > night.fg[2]  # redder than blue
-    assert night.fg[1] > night.fg[2]  # green warmer than blue
-
-
 def test_resolve_unknown_falls_back_to_dark(caplog):
     assert resolve("nope") is THEMES["dark"]
     assert "unknown theme" in caplog.text
+
+
+def _wall(hour: int, minute: int = 0) -> float:
+    return time.mktime((2026, 9, 9, hour, minute, 0, 0, 0, -1))
+
+
+def test_effective_theme_honors_explicit_names():
+    assert effective_theme(_Cfg(theme="light"), _wall(23)).name == "light"
+    assert effective_theme(_Cfg(theme="dark"), _wall(12)).name == "dark"
+    assert effective_theme(None, _wall(12)).name == "dark"
+
+
+def test_effective_theme_auto_switches_within_the_window():
+    cfg = _Cfg(theme="auto", display={"light_from": "07:00",
+                                      "light_to": "19:00"})
+    assert effective_theme(cfg, _wall(12)).name == "light"
+    assert effective_theme(cfg, _wall(23)).name == "dark"
+    assert effective_theme(cfg, _wall(6, 59)).name == "dark"
+    assert effective_theme(cfg, _wall(7, 0)).name == "light"
+
+
+def test_effective_theme_auto_window_crossing_midnight():
+    cfg = _Cfg(theme="auto", display={"light_from": "19:00",
+                                      "light_to": "07:00"})
+    assert effective_theme(cfg, _wall(12)).name == "dark"  # outside
+    assert effective_theme(cfg, _wall(23)).name == "light"  # after 19:00
+    assert effective_theme(cfg, _wall(6)).name == "light"  # before 07:00
 
 
 def test_font_cache_returns_same_instance_per_size_and_weight():

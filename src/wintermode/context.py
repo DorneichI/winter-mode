@@ -48,6 +48,13 @@ class Nav:
             self.changed = True
 
 
+@dataclass(frozen=True)
+class BarItem:
+    """A single status-bar item published by a module."""
+
+    text: str
+
+
 @dataclass
 class Ctx:
     theme: Theme
@@ -58,5 +65,6 @@ class Ctx:
     height: int
     points: list = field(default_factory=list)  # live touch points
     now: float = 0.0  # monotonic seconds, for tap timing
-    config: Any = None  # Config lands in the next step
-    registry: Any = None  # module registry lands in the next step
+    wall: float = 0.0  # wall-clock seconds, for display/formatting
+    config: Any = None  # the Config instance
+    registry: Any = None  # the module registry

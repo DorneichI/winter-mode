@@ -94,3 +94,8 @@ def test_registry_get_and_contains(config, fake_module):
     assert "nope" not in registry
     assert registry.get("clock").id == "clock"
     assert registry.get("nope") is None
+
+
+def test_discovery_finds_the_real_skeleton_modules():
+    found = discover()
+    assert [m.id for m in found] == ["clock", "dummy", "settings"]

@@ -1,14 +1,15 @@
-"""Design tokens for the terminal look.
+"""Design tokens for the terminal look, plus the auto theme schedule.
 
 Every pixel the app draws comes from a Theme — modules never hardcode
-colors.  Selection/pressed state is inverse video (fg text on bg).  Night
-is a palette only: the driver's backlight is on/off, so dimming is a
-future concern, not a theme concern.
+colors.  Selection/pressed state is inverse video (fg text on bg).
+`theme: auto` switches light/dark on the display.light_from/light_to
+schedule; the app re-checks once a minute.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
@@ -41,15 +42,6 @@ THEMES: dict[str, Theme] = {
         dim=(135, 130, 125),
         border=(180, 175, 170),
     ),
-    # dim amber phosphor on near-black — a palette, not a backlight setting
-    "night": Theme(
-        "night",
-        bg=(10, 8, 3),
-        fg=(205, 165, 65),
-        accent=(150, 110, 30),
-        dim=(110, 88, 34),
-        border=(70, 56, 22),
-    ),
 }
 
 
@@ -59,3 +51,24 @@ def resolve(name: str) -> Theme:
         log.warning("unknown theme %r, falling back to dark", name)
         theme = THEMES["dark"]
     return theme
+
+
+def _in_light_window(now: str, light_from: str, light_to: str) -> bool:
+    if light_from <= light_to:
+        return light_from <= now < light_to
+    return now >= light_from or now < light_to  # window crosses midnight
+
+
+def effective_theme(config, wall: float) -> Theme:
+    """The theme for this wall-clock second, honoring `theme: auto`."""
+    if config is None:
+        return THEMES["dark"]
+    name = config.data.get("theme", "dark")
+    if name != "auto":
+        return resolve(name)
+    now = time.strftime("%H:%M", time.localtime(wall))
+    display = config.data.get("display", {})
+    if _in_light_window(now, display.get("light_from", "07:00"),
+                        display.get("light_to", "19:00")):
+        return THEMES["light"]
+    return THEMES["dark"]

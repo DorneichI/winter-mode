@@ -24,20 +24,28 @@ DEFAULTS: dict[str, Any] = {
     "theme": "dark",
     "modules": [],
     "statusbar": {},
-    "display": {"mode": "always_on", "idle_seconds": 60},
+    "statusbar_rotate": 10,
+    "display": {"mode": "always_on", "idle_seconds": 60,
+                "light_from": "07:00", "light_to": "19:00"},
 }
 
-RESERVED = {"theme", "modules", "statusbar", "display"}
+RESERVED = {"theme", "modules", "statusbar", "statusbar_rotate", "display"}
 
 # the reserved keys, expressed in the same DSL everything else uses
 THEME_SCHEMA = {
-    "theme": {"type": "choice", "options": ["dark", "light", "night"],
+    "theme": {"type": "choice", "options": ["dark", "light", "auto"],
               "default": "dark"},
+}
+ROTATE_SCHEMA = {
+    "statusbar_rotate": {"type": "int", "min": 0, "max": 3600,
+                         "default": 10},
 }
 DISPLAY_SCHEMA = {
     "mode": {"type": "choice", "options": ["always_on", "wake_on_touch"],
              "default": "always_on"},
     "idle_seconds": {"type": "int", "min": 5, "max": 3600, "default": 60},
+    "light_from": {"type": "time", "default": "07:00"},
+    "light_to": {"type": "time", "default": "19:00"},
 }
 
 
@@ -89,6 +97,7 @@ class Config:
             if isinstance(raw, dict):
                 _deep_update(data, raw)
         data.update(schema.validate(THEME_SCHEMA, data))
+        data.update(schema.validate(ROTATE_SCHEMA, data))
         data["display"] = schema.validate(DISPLAY_SCHEMA, data.get("display"))
         data["modules"] = _coerce_modules(data.get("modules"))
         data["statusbar"] = _coerce_statusbar(data.get("statusbar"))

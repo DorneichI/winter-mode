@@ -11,7 +11,11 @@ def test_missing_file_is_created_with_defaults(tmp_path):
     assert path.exists()
     assert config.data["theme"] == "dark"
     assert config.data["modules"] == []
-    assert config.data["display"] == {"mode": "always_on", "idle_seconds": 60}
+    assert config.data["statusbar_rotate"] == 10
+    assert config.data["display"] == {
+        "mode": "always_on", "idle_seconds": 60,
+        "light_from": "07:00", "light_to": "19:00",
+    }
 
 
 def test_extra_top_level_namespaces_survive_a_save_roundtrip(tmp_path):

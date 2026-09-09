@@ -149,12 +149,12 @@ def ctx(theme, fonts, config):
     from wintermode.context import Ctx, Nav
     from wintermode.views import HomeView
 
-    def _make(registry=None):
+    def _make(registry=None, wall: float = 0.0):
         nav = Nav(HomeView(registry=registry, config=config))
         return Ctx(
             theme=theme, fonts=fonts, nav=nav,
             content=(0, 30, 800, 480), width=800, height=480,
-            config=config, registry=registry,
+            config=config, registry=registry, wall=wall,
         )
 
     return _make
