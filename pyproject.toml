@@ -15,8 +15,9 @@ classifiers = [
 ]
 dependencies = [
     "Pillow>=9.1",
-    # TODO: switch to ertftm070>=0.3.0 once the shadow-diffing release is on PyPI.
-    "ertftm070 @ git+https://github.com/DorneichI/er-tftm070-4-driver@feat/shadow-diffing",
+    # TODO: switch to ertftm070>=0.3.0 once the shadow-diffing release is on
+    # PyPI. Until then: main carries the diffing (the branch was merged).
+    "ertftm070 @ git+https://github.com/DorneichI/er-tftm070-4-driver@main",
 ]
 dynamic = ["version"]
 
