@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from wintermode import __version__, schema
-from wintermode.config import DISPLAY_SCHEMA, THEME_SCHEMA
+from wintermode.config import DISPLAY_PAGE_SCHEMA
 from wintermode.fonts import FONTS_DIR
 from wintermode.net import ipv4
 from wintermode.theme import effective_theme
@@ -181,35 +181,18 @@ class WebServer:
                     },
                     "version": __version__,
                     "groups": [
-                        {"id": "theme", "title": "THEME",
-                         "schema": self._theme_schema(),
-                         "values": self._theme_values()},
                         {"id": "display", "title": "DISPLAY",
-                         "schema": DISPLAY_SCHEMA,
-                         "values": config.data.get("display", {})},
+                         "schema": DISPLAY_PAGE_SCHEMA,
+                         "values": self._display_values()},
                         {"id": "statusbar", "title": "STATUS BAR",
                          "schema": self._statusbar_schema(),
                          "values": self._statusbar_values()},
                     ],
                 }
 
-            def _theme_schema(self) -> dict:
-                return {
-                    **THEME_SCHEMA,
-                    "light_from": {"type": "time", "title": "Light from",
-                                   "default": "07:00",
-                                   "visible_if": {"field": "theme",
-                                                  "equals": "auto"}},
-                    "light_to": {"type": "time", "title": "Light to",
-                                 "default": "19:00",
-                                 "visible_if": {"field": "theme",
-                                                "equals": "auto"}},
-                }
-
-            def _theme_values(self) -> dict:
+            def _display_values(self) -> dict:
                 return {"theme": config.data["theme"],
-                        "light_from": config.data["display"]["light_from"],
-                        "light_to": config.data["display"]["light_to"]}
+                        **config.data.get("display", {})}
 
             def _statusbar_schema(self) -> dict:
                 schema = {
@@ -234,23 +217,17 @@ class WebServer:
 
             def _put_device(self, group: str, body: dict) -> None:
                 try:
-                    if group == "theme":
-                        schema.validate_strict(self._theme_schema(), body)
+                    if group == "display":
+                        schema.validate_strict(DISPLAY_PAGE_SCHEMA, body)
+                        display_keys = [key for key in body
+                                        if key != "theme"]
                         config.update({
                             "theme": body.get("theme", config.data["theme"]),
                             "display": {
-                                "light_from": body.get(
-                                    "light_from",
-                                    config.data["display"]["light_from"]),
-                                "light_to": body.get(
-                                    "light_to",
-                                    config.data["display"]["light_to"]),
+                                **config.data["display"],
+                                **{key: body[key] for key in display_keys},
                             },
                         })
-                    elif group == "display":
-                        schema.validate_strict(DISPLAY_SCHEMA, body)
-                        config.update({"display": {
-                            **config.data["display"], **body}})
                     elif group == "statusbar":
                         schema.validate_strict(self._statusbar_schema(), body)
                         statusbar = {

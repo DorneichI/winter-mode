@@ -105,7 +105,7 @@ def test_settings_hub_cards_include_device_and_module_pages(
     registry = setup_registry(config, Clock(), Dummy(), settings)
     ctx = ctx(registry=registry)
     labels = [label for label, _ in settings.cards(ctx)]
-    assert labels[:4] == ["THEME", "STATUS BAR", "DISPLAY", "SYSTEM"]
+    assert labels[:3] == ["DISPLAY", "STATUS BAR", "SYSTEM"]
     assert "CLOCK" in labels  # no ▸ — that glyph is missing from 3270
     assert "DUMMY" in labels
 
@@ -120,13 +120,15 @@ def test_settings_statusbar_schema_lists_other_modules_plus_rotation(
     assert set(view.schema) == {"clock", "dummy", "rotate_seconds"}
 
 
-def test_settings_theme_page_carries_the_schedule(theme, fonts, ctx, config):
+def test_settings_display_page_merges_theme_and_behavior(
+        theme, fonts, ctx, config):
     settings = Settings()
     registry = setup_registry(config, Clock(), Dummy(), settings)
     ctx = ctx(registry=registry)
     settings.cards(ctx)
-    view = settings._views["theme"]
-    assert set(view.schema) == {"theme", "light_from", "light_to"}
+    view = settings._views["display"]
+    assert set(view.schema) == {"theme", "light_from", "light_to",
+                                "mode", "idle_seconds"}
 
 
 def test_settings_module_card_tap_pushes_form(theme, fonts, ctx, config):
@@ -141,8 +143,8 @@ def test_settings_module_card_tap_pushes_form(theme, fonts, ctx, config):
     assert ctx.nav.top.title == "CLOCK"
 
 
-def test_theme_page_times_are_conditional_on_auto():
-    from wintermode.modules.settings.module import THEME_PAGE_SCHEMA
+def test_display_page_times_are_conditional_on_auto():
+    from wintermode.config import DISPLAY_PAGE_SCHEMA
     for key in ("light_from", "light_to"):
-        assert THEME_PAGE_SCHEMA[key]["visible_if"] == {
+        assert DISPLAY_PAGE_SCHEMA[key]["visible_if"] == {
             "field": "theme", "equals": "auto"}

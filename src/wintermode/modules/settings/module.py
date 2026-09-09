@@ -12,20 +12,10 @@ import socket
 import time
 
 from wintermode import __version__
-from wintermode.config import DISPLAY_SCHEMA, THEME_SCHEMA
+from wintermode.config import DISPLAY_PAGE_SCHEMA
 from wintermode.context import Ctx
 from wintermode.net import ipv4 as _ipv4
 from wintermode.views import CardGrid, FormView, InfoView
-
-# the theme page: the theme choice plus the auto-schedule window —
-# the times only appear while theme is "auto" (declarative visible_if)
-THEME_PAGE_SCHEMA = {
-    **THEME_SCHEMA,
-    "light_from": {"type": "time", "title": "Light from", "default": "07:00",
-                   "visible_if": {"field": "theme", "equals": "auto"}},
-    "light_to": {"type": "time", "title": "Light to", "default": "19:00",
-                 "visible_if": {"field": "theme", "equals": "auto"}},
-}
 
 START = time.time()
 
@@ -56,9 +46,8 @@ class Settings(CardGrid):
         if not self._views:
             self._build_views(ctx)
         cards: list[tuple[str, object]] = [
-            ("THEME", self._views["theme"]),
-            ("STATUS BAR", self._views["statusbar"]),
             ("DISPLAY", self._views["display"]),
+            ("STATUS BAR", self._views["statusbar"]),
             ("SYSTEM", self._views["system"]),
         ]
         for module in ctx.registry.home_order():
@@ -86,12 +75,12 @@ class Settings(CardGrid):
             return schema
 
         self._views = {
-            "theme": FormView(
-                "THEME", THEME_PAGE_SCHEMA,
+            "display": FormView(
+                "DISPLAY", DISPLAY_PAGE_SCHEMA,
                 lambda: {
                     key: config.data["theme"] if key == "theme"
                     else config.data["display"].get(key)
-                    for key in THEME_PAGE_SCHEMA
+                    for key in DISPLAY_PAGE_SCHEMA
                 },
                 lambda key, value: config.update(
                     {"theme": value} if key == "theme"
@@ -107,12 +96,6 @@ class Settings(CardGrid):
                 lambda key, value: config.update(
                     {"statusbar_rotate": value} if key == "rotate_seconds"
                     else {"statusbar": {key: value}}),
-            ),
-            "display": FormView(
-                "DISPLAY", DISPLAY_SCHEMA,
-                lambda: {key: config.data["display"].get(key)
-                         for key in DISPLAY_SCHEMA},
-                lambda key, value: config.update({"display": {key: value}}),
             ),
             "system": InfoView("SYSTEM", [
                 ("HOST", lambda: socket.gethostname()),

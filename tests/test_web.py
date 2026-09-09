@@ -99,10 +99,9 @@ def test_device_payload_and_group_put(web):
     assert status == 200
     assert device["theme"]["name"] == "dark"
     assert set(device["tokens"]) == {"bg", "fg", "accent", "dim", "border"}
-    assert [g["id"] for g in device["groups"]] == ["theme", "display",
-                                                   "statusbar"]
+    assert [g["id"] for g in device["groups"]] == ["display", "statusbar"]
     before = config.generation
-    status, _payload = request("PUT", port, "/api/device/theme",
+    status, _payload = request("PUT", port, "/api/device/display",
                                {"theme": "light"})
     assert status == 200
     assert config.data["theme"] == "light"
@@ -111,7 +110,7 @@ def test_device_payload_and_group_put(web):
 
 def test_device_put_rejects_bad_values(web):
     _server, _actions, _config, _registry, port = web
-    status, _payload = request("PUT", port, "/api/device/theme",
+    status, _payload = request("PUT", port, "/api/device/display",
                                {"theme": "vaporwave"})
     assert status == 400
 

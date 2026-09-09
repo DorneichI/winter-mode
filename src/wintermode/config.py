@@ -48,6 +48,19 @@ DISPLAY_SCHEMA = {
     "light_to": {"type": "time", "default": "19:00"},
 }
 
+# one settings page for everything display-related: the theme choice,
+# the auto-schedule window (only while theme is "auto"), and the
+# always-on vs wake-on-touch behavior
+DISPLAY_PAGE_SCHEMA = {
+    **THEME_SCHEMA,
+    "light_from": {"type": "time", "title": "Light from", "default": "07:00",
+                   "visible_if": {"field": "theme", "equals": "auto"}},
+    "light_to": {"type": "time", "title": "Light to", "default": "19:00",
+                 "visible_if": {"field": "theme", "equals": "auto"}},
+    "mode": DISPLAY_SCHEMA["mode"],
+    "idle_seconds": DISPLAY_SCHEMA["idle_seconds"],
+}
+
 
 def _deep_update(target: dict, source: dict) -> dict:
     for key, value in source.items():
