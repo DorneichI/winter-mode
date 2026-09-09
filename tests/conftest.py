@@ -24,13 +24,27 @@ class FakeLCD:
 
     def __init__(self) -> None:
         self.calls: list[Image.Image] = []
+        self.sleep_calls = 0
+        self.wake_calls = 0
+        self.backlight_calls: list[bool] = []
 
     def image(self, img: Image.Image, x: int = 0, y: int = 0, **kw) -> None:
         self.calls.append(img.copy())
 
+    def sleep(self) -> None:
+        self.sleep_calls += 1
+
+    def wake(self) -> None:
+        self.wake_calls += 1
+
+    def backlight(self, on: bool) -> None:
+        self.backlight_calls.append(on)
+
 
 class ScriptedTouch:
-    """read() returns scripted point-lists per call, then empty."""
+    """read() returns scripted point-lists per call, then empty.
+    wait_touch() consumes the next script entry and reports whether it
+    held any points — the run() loop's asleep branch."""
 
     def __init__(self, script: list[list[TouchPoint]]) -> None:
         self.script = list(script)
@@ -42,6 +56,14 @@ class ScriptedTouch:
         points = self.script[self.i]
         self.i += 1
         return points
+
+    def wait_touch(self, timeout: float | None = None,
+                   poll_interval: float = 0.02) -> bool:
+        if self.i >= len(self.script):
+            return False
+        points = self.script[self.i]
+        self.i += 1
+        return bool(points)
 
 
 class FakeClock:

@@ -222,3 +222,68 @@ def test_config_writing_tap_retunes_in_one_frame(make_app, point):
     app._step()  # release: writes config -> one frame with light theme
     assert app.theme.name == "light"
     assert renders == ["dark", "light"]  # initial, then the themed frame
+
+
+def test_wake_on_touch_sleeps_after_idle(make_app):
+    app, lcd, touch, clock = make_app()
+    present(app, lcd)
+    app.config.update({"display": {"mode": "wake_on_touch",
+                                   "idle_seconds": 5}})
+    clock.set(1001.0, 1_700_000_001.0)
+    app._step()  # generation change: still awake
+    clock.set(1010.0, 1_700_000_010.0)  # idle past 5 s
+    assert app._step() is False  # the black frame was presented inside
+    assert app.asleep is True
+    assert lcd.sleep_calls == 1
+    assert lcd.backlight_calls == [False]
+    assert app.canvas.getpixel((400, 400)) == (0, 0, 0)  # black frame
+
+
+def test_always_on_never_sleeps(make_app):
+    app, lcd, _touch, clock = make_app()
+    present(app, lcd)
+    clock.set(2000.0, 1_700_001_000.0)  # hours of idle
+    app._step()
+    assert app.asleep is False
+    assert lcd.sleep_calls == 0
+
+
+def test_wake_repaints_and_swallows_the_wake_tap(make_app, point):
+    app, lcd, touch, clock = make_app()
+    present(app, lcd)
+    app.config.update({"display": {"mode": "wake_on_touch",
+                                   "idle_seconds": 5}})
+    clock.set(1001.0, 1_700_000_001.0)
+    app._step()
+    clock.set(1010.0, 1_700_000_010.0)
+    app._step()  # asleep
+
+    # the wake press is consumed by wait_touch (run()'s asleep branch)
+    touch.script = [[point(400, 300)], [], []]
+    assert touch.wait_touch(0.5) is True
+    app._wake()
+    assert app.asleep is False
+    assert lcd.backlight_calls == [False, True]
+    assert lcd.wake_calls == 1
+    # the release afterwards fires no tap: nothing was pushed
+    assert app._step() is False
+    assert len(app.nav) == 1
+
+
+def test_tap_activity_keeps_the_panel_awake(make_app, point):
+    app, lcd, touch, clock = make_app()
+    present(app, lcd)
+    app.config.update({"display": {"mode": "wake_on_touch",
+                                   "idle_seconds": 5}})
+    clock.set(1001.0, 1_700_000_001.0)
+    app._step()
+    # a finger down at second 1004 resets the timer
+    touch.script = [[point(50, 50)], []]
+    clock.set(1004.0, 1_700_000_004.0)
+    app._step()
+    clock.set(1008.0, 1_700_000_008.0)  # only 4 s after the touch
+    app._step()
+    assert app.asleep is False
+    clock.set(1012.0, 1_700_000_012.0)  # 8 s after the touch
+    app._step()
+    assert app.asleep is True

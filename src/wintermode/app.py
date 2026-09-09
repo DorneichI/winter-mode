@@ -82,6 +82,8 @@ class WinterApp:
         self.last_minute: int | None = None
         self.last_gen = config.generation if config else 0
         self._next_refresh = 0.0
+        self.asleep = False
+        self.last_touch = self.clock()[0]  # the sleep timer starts at boot
         self._bar_hitboxes: list[tuple[tuple[int, int, int, int], str]] = []
 
     # --- context ----------------------------------------------------------
@@ -180,6 +182,8 @@ class WinterApp:
         rerender_content = False
 
         events = self.tracker.update(points, now)
+        if points:  # any finger activity resets the sleep timer
+            self.last_touch = now
         for kind, x, y in events:
             if y < BAR_H:
                 if kind == "tap":
@@ -242,12 +246,58 @@ class WinterApp:
                 self._draw_bar(now, points, wall)
                 dirty = True
 
+        # wake_on_touch: idle long enough -> black frame, panel sleeps
+        if self.config and not self.asleep:
+            display = self.config.data.get("display", {})
+            if display.get("mode") == "wake_on_touch" and (
+                now - self.last_touch > display.get("idle_seconds", 60)
+            ):
+                self._enter_sleep()  # presents the black frame itself
+                return False  # run() must not present again
+
         return dirty
+
+    # --- sleep / wake -------------------------------------------------------
+
+    def _enter_sleep(self) -> None:
+        # fill black BEFORE sleep() — the panel's center-fade artifact
+        self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height),
+                            fill=(0, 0, 0))
+        self.lcd.image(self.canvas)
+        self.lcd.sleep()
+        self.lcd.backlight(False)
+        self.asleep = True
+        log.info("asleep — any touch wakes (display mode: wake_on_touch)")
+
+    def _wake(self) -> None:
+        self.lcd.backlight(True)
+        self.lcd.wake()
+        self.asleep = False
+        now, wall = self.clock()
+        self.last_touch = now
+        points = self.touch.read(mapped=True)
+        # the waking tap must never activate UI: seed it as dead
+        self.tracker.seed(points, now)
+        self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height),
+                            fill=self.theme.bg)
+        self._render_content(now, points, wall)
+        self._draw_bar(now, points, wall)
+        self.lcd.image(self.canvas)
+        log.info("woke up")
 
     def run(self) -> None:
         log.info("running — Ctrl-C to stop")
         try:
             while True:
+                if self.asleep:
+                    # a config change while asleep (e.g. web PUT) wakes too
+                    if self.config and self.config.generation != self.last_gen:
+                        self.last_gen = self.config.generation
+                        self._wake()
+                        continue
+                    if self.touch.wait_touch(timeout=0.5):
+                        self._wake()
+                    continue
                 if self._step():
                     self.lcd.image(self.canvas)
                 time.sleep(0.01)

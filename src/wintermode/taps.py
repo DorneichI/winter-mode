@@ -35,6 +35,12 @@ class TapTracker:
         self.max_s = max_ms / 1000.0
         self._fingers: dict[int, _Finger] = {}
 
+    def seed(self, points: list[TouchPoint], now: float) -> None:
+        """Register already-down fingers as dead: their release fires
+        nothing.  Used at wake-up so the waking tap never activates UI."""
+        for point in points:
+            self._fingers[point.id] = _Finger(point.x, point.y, now, moved=True)
+
     def update(
         self, points: list[TouchPoint], now: float
     ) -> list[tuple[str, int, int]]:

@@ -1,12 +1,10 @@
-"""The startup splash: WINTER MODE, slow zoom, crisp landing.
+"""The startup splash: WINTER MODE, stepped through the crisp sizes.
 
-This is the ONLY animation in the app, deliberately: every zoom frame
-changes nearly every pixel, so driver diffing cannot help and each frame
-costs a full-screen blit (~0.6 s hardware-bound, faithfully replayed by
-the simulator).  The moving frames are exempt from the 1-bit text rule
-(anti-aliasing keeps the motion smooth); the final frame locks in crisp
-— rendered through Fonts.draw_text at an integer multiple of the
-verified 44 px clean size, so the pixel grid lands perfectly.
+The splash steps through the verified clean font sizes — smallest to
+biggest, one at a time, each held for half a second — and holds the
+landing.  Every frame is a static 1-bit render, so every step is crisp;
+the stepping itself is the animation, and each frame costs a full-screen
+blit (~0.6 s hardware-bound, faithfully replayed by the simulator).
 """
 
 from __future__ import annotations
@@ -22,9 +20,9 @@ from wintermode.fonts import (
 )
 from wintermode.theme import Theme
 
-FRAMES = 14
-START_SIZE = 24
-BOOT_BASE = max(CLEAN_SIZES)  # the clean size the landing frame scales from
+STEP_HOLD_S = 0.5
+FINAL_HOLD_S = 1.2
+BOOT_BASE = max(CLEAN_SIZES)  # the clean size the bigger steps scale from
 
 
 def _draw_version(draw, fonts: Fonts, theme: Theme, width: int, height: int,
@@ -38,7 +36,7 @@ def _draw_version(draw, fonts: Fonts, theme: Theme, width: int, height: int,
 
 
 def play_boot(lcd, theme: Theme, fonts: Fonts, version: str) -> None:
-    """Zoom WINTER MODE in slowly, staying inside the frame, then hold."""
+    """Step WINTER MODE up the clean-size ladder, then hold the landing."""
     width, height = lcd.width, lcd.height
     canvas = Image.new("RGB", (width, height), theme.bg)
     draw = ImageDraw.Draw(canvas)
@@ -47,27 +45,14 @@ def play_boot(lcd, theme: Theme, fonts: Fonts, version: str) -> None:
     # that still fits inside the frame (advance widths scale linearly)
     base_w = fonts.textwidth("WINTER MODE", "regular", BOOT_BASE)
     multiple = max(1, (width - 40) // base_w)
-    final_size = BOOT_BASE * multiple
+    steps = [min(CLEAN_SIZES)] + [BOOT_BASE * k for k in range(1, multiple + 1)]
 
-    for frame in range(FRAMES - 1):  # moving frames: AA, exempt from 1-bit
+    for size in steps:
         draw.rectangle((0, 0, width, height), fill=theme.bg)
-        t = frame / (FRAMES - 2)
-        eased = t * t * (3 - 2 * t)  # smoothstep: slow, fast, slow
-        size = int(START_SIZE + eased * (final_size - START_SIZE))
-        font = fonts.get("regular", size)
         x = (width - fonts.textwidth("WINTER MODE", "regular", size)) / 2
         y = (height - fonts.textsize("WINTER MODE", "regular", size)[1]) / 2
-        draw.text((x, y), "WINTER MODE", font=font, fill=theme.fg)
+        fonts.draw_text(draw, (x, y), "WINTER MODE", "regular", size,
+                        theme.fg)
         _draw_version(draw, fonts, theme, width, height, version)
         lcd.image(canvas)
-
-    # final frame + hold: crisp 1-bit landing at the fit size
-    draw.rectangle((0, 0, width, height), fill=theme.bg)
-    x = (width - fonts.textwidth("WINTER MODE", "regular", final_size)) / 2
-    y = (height - fonts.textsize("WINTER MODE", "regular", final_size)[1]) / 2
-    fonts.draw_text(draw, (x, y), "WINTER MODE", "regular", final_size,
-                    theme.fg)
-    _draw_version(draw, fonts, theme, width, height, version)
-    lcd.image(canvas)
-
-    time.sleep(1.2)  # hold the final frame before the cut to home
+        time.sleep(STEP_HOLD_S if size != steps[-1] else FINAL_HOLD_S)
