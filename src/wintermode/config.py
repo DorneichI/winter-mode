@@ -58,7 +58,10 @@ DISPLAY_PAGE_SCHEMA = {
     "light_to": {"type": "time", "title": "Light to", "default": "19:00",
                  "visible_if": {"field": "theme", "equals": "auto"}},
     "mode": DISPLAY_SCHEMA["mode"],
-    "idle_seconds": DISPLAY_SCHEMA["idle_seconds"],
+    # the idle timeout only matters for wake_on_touch
+    "idle_seconds": {**DISPLAY_SCHEMA["idle_seconds"],
+                     "visible_if": {"field": "mode",
+                                    "equals": "wake_on_touch"}},
 }
 
 

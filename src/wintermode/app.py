@@ -215,7 +215,9 @@ class WinterApp:
 
         if self.nav.changed:
             self.nav.changed = False
-            self._next_refresh = now
+            # align refreshes to wall-clock second boundaries so module
+            # updates and the bar tick land in the same frame
+            self._next_refresh = int(wall) + 1
             self._render_content(now, points, wall)
             self._draw_bar(now, points, wall)
             dirty = True
@@ -235,10 +237,11 @@ class WinterApp:
         if rerender_content:
             self._render_content(now, points, wall)
 
-        # module refresh interval (e.g. the clock's once-a-second render)
+        # module refresh interval, wall-aligned: the clock's once-a-
+        # second render lands on the same boundary as the bar's tick
         top = self.nav.top
-        if getattr(top, "interval", 0) and now >= self._next_refresh:
-            self._next_refresh = now + top.interval
+        if getattr(top, "interval", 0) and int(wall) >= self._next_refresh:
+            self._next_refresh = int(wall) + top.interval
             if top.render(self.draw, self._ctx(now, points, wall)):
                 dirty = True
 

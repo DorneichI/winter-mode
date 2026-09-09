@@ -148,3 +148,9 @@ def test_display_page_times_are_conditional_on_auto():
     for key in ("light_from", "light_to"):
         assert DISPLAY_PAGE_SCHEMA[key]["visible_if"] == {
             "field": "theme", "equals": "auto"}
+
+
+def test_idle_seconds_is_conditional_on_wake_on_touch():
+    from wintermode.config import DISPLAY_PAGE_SCHEMA
+    assert DISPLAY_PAGE_SCHEMA["idle_seconds"]["visible_if"] == {
+        "field": "mode", "equals": "wake_on_touch"}

@@ -287,3 +287,22 @@ def test_tap_activity_keeps_the_panel_awake(make_app, point):
     clock.set(1012.0, 1_700_000_012.0)  # 8 s after the touch
     app._step()
     assert app.asleep is True
+
+
+def test_clock_module_renders_on_wall_boundaries(make_app):
+    import time as _t
+
+    from wintermode.modules.clock.module import Clock
+
+    app, lcd, touch, clock = make_app()
+    present(app, lcd)
+    app.registry._all["clock"] = Clock()
+    app.registry.validate_namespaces()  # fills config["clock"] defaults
+    app.nav.push(app.registry["clock"])
+    present(app, lcd)
+    boundary = 1_700_000_001.0  # one wall second later, on the boundary
+    clock.set(1002.0, boundary)
+    app._step()
+    expected = _t.strftime("%H:%M", _t.localtime(boundary))
+    # the module refreshed AT the boundary — same second the bar shows
+    assert app.registry["clock"]._last_text == expected
