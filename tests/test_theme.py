@@ -1,8 +1,18 @@
-"""Theme tokens and font cache."""
+"""Theme tokens, the font cache, and the 1-bit text path."""
 
 import pytest
+from PIL import Image, ImageDraw
 
-from wintermode.fonts import Fonts
+from wintermode.fonts import (
+    CLEAN_SIZES,
+    SIZE_BAR,
+    SIZE_BOOT_VERSION,
+    SIZE_CARD,
+    SIZE_CLOCK,
+    SIZE_FORM,
+    SIZE_PAGINATOR,
+    Fonts,
+)
 from wintermode.theme import THEMES, resolve
 
 
@@ -46,3 +56,33 @@ def test_textwidth_is_monotonic_in_size():
     assert fonts.textwidth("WINTER MODE", "regular", 40) > fonts.textwidth(
         "WINTER MODE", "regular", 20
     )
+
+
+def test_named_sizes_are_all_verified_clean():
+    for size in (SIZE_BAR, SIZE_CARD, SIZE_FORM, SIZE_PAGINATOR,
+                 SIZE_CLOCK, SIZE_BOOT_VERSION):
+        assert size in CLEAN_SIZES
+
+
+def test_draw_text_is_strictly_bilevel(theme, fonts):
+    canvas = Image.new("RGB", (300, 60), theme.bg)
+    draw = ImageDraw.Draw(canvas)
+    fonts.draw_text(draw, (5, 5), "WINTER 16:42", "regular", SIZE_BAR,
+                    theme.fg)
+    colors = {color for _count, color in canvas.getcolors()}
+    assert colors <= {theme.bg, theme.fg}  # no anti-aliased grays
+
+
+def test_draw_text_scales_non_clean_sizes_and_stays_bilevel(theme, fonts):
+    canvas = Image.new("RGB", (200, 60), theme.bg)
+    draw = ImageDraw.Draw(canvas)
+    fonts.draw_text(draw, (5, 5), "W", "regular", 30, theme.fg)  # not clean
+    colors = {color for _count, color in canvas.getcolors()}
+    assert colors <= {theme.bg, theme.fg}
+
+
+def test_draw_text_empty_text_is_a_noop(theme, fonts):
+    canvas = Image.new("RGB", (50, 50), theme.bg)
+    draw = ImageDraw.Draw(canvas)
+    fonts.draw_text(draw, (0, 0), "", "regular", SIZE_BAR, theme.fg)
+    assert {c for _n, c in canvas.getcolors()} == {theme.bg}

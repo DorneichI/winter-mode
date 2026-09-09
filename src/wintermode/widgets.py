@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from wintermode.fonts import Fonts
+from wintermode.fonts import SIZE_CARD, SIZE_PAGINATOR, Fonts
 from wintermode.theme import Theme
 
 Rect = tuple[int, int, int, int]  # x0, y0, x1, y1
@@ -41,7 +41,7 @@ def draw_button(
     fonts: Fonts,
     theme: Theme,
     weight: str = "regular",
-    size: int = 16,
+    size: int = SIZE_CARD,
     pressed: bool = False,
 ) -> Rect:
     """A bordered box with a centered label; pressed = inverse video."""
@@ -53,8 +53,7 @@ def draw_button(
     _, text_h = fonts.textsize(label, weight, size)
     text_x = x0 + (x1 - x0 - fonts.textwidth(label, weight, size)) / 2
     text_y = y0 + (y1 - y0 - text_h) / 2
-    draw.text((text_x, text_y), label, font=fonts.get(weight, size),
-              fill=text_fill)
+    fonts.draw_text(draw, (text_x, text_y), label, weight, size, text_fill)
     return rect
 
 
@@ -65,7 +64,7 @@ def draw_paginator(
     pages: int,
     fonts: Fonts,
     theme: Theme,
-    size: int = 16,
+    size: int = SIZE_PAGINATOR,
 ) -> dict[str, Rect | None]:
     """Centered `[‹ prev]  n/m  [next ›]`; returns prev/next hitboxes."""
     x0, y0, x1, y1 = strip
@@ -89,12 +88,12 @@ def draw_paginator(
 
     prev_color = theme.fg if page > 0 else theme.dim
     next_color = theme.fg if page < pages - 1 else theme.dim
-    draw.text((prev_x, ty), label_prev, font=fonts.get("regular", size),
-              fill=prev_color)
-    draw.text((counter_x, ty), counter, font=fonts.get("regular", size),
-              fill=theme.dim)
-    draw.text((next_x, ty), label_next, font=fonts.get("regular", size),
-              fill=next_color)
+    fonts.draw_text(draw, (prev_x, ty), label_prev, "regular", size,
+                    prev_color)
+    fonts.draw_text(draw, (counter_x, ty), counter, "regular", size,
+                    theme.dim)
+    fonts.draw_text(draw, (next_x, ty), label_next, "regular", size,
+                    next_color)
 
     if page > 0:
         result["prev"] = (int(prev_x), y0, int(prev_x + prev_w), y1)

@@ -23,7 +23,7 @@ from wintermode import __version__
 from wintermode.boot import play_boot
 from wintermode.config import Config
 from wintermode.context import Ctx, Nav
-from wintermode.fonts import Fonts
+from wintermode.fonts import SIZE_BAR, Fonts
 from wintermode.registry import Registry, discover
 from wintermode.taps import TapTracker
 from wintermode.theme import Theme, resolve
@@ -31,8 +31,7 @@ from wintermode.views import HomeView
 
 log = logging.getLogger(__name__)
 
-BAR_H = 28  # persistent top bar height
-BAR_FONT = 18
+BAR_H = 30  # persistent top bar height
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -99,35 +98,30 @@ class WinterApp:
         draw.line((0, BAR_H - 1, width - 1, BAR_H - 1), fill=theme.border)
 
         clock_text = time.strftime("%H:%M:%S", time.localtime(wall))
-        draw.text(
-            (8, 4), clock_text, font=self.fonts.get("regular", BAR_FONT),
-            fill=theme.fg,
-        )
+        self.fonts.draw_text(draw, (8, 5), clock_text, "regular", SIZE_BAR,
+                             theme.fg)
 
         title = getattr(self.nav.top, "title", "HOME")
-        draw.text(
-            ((width - self.fonts.textwidth(title, "regular", BAR_FONT)) / 2, 4),
-            title, font=self.fonts.get("regular", BAR_FONT), fill=theme.fg,
+        self.fonts.draw_text(
+            draw,
+            ((width - self.fonts.textwidth(title, "regular", SIZE_BAR)) / 2, 5),
+            title, "regular", SIZE_BAR, theme.fg,
         )
 
         self._bar_hitboxes = []
         if len(self.nav) > 1:  # back/home exist only below the root
             home = "[⌂ HOME]"
-            home_w = self.fonts.textwidth(home, "regular", BAR_FONT)
+            home_w = self.fonts.textwidth(home, "regular", SIZE_BAR)
             home_x = width - home_w - 8
-            draw.text(
-                (home_x, 4), home, font=self.fonts.get("regular", BAR_FONT),
-                fill=theme.accent,
-            )
+            self.fonts.draw_text(draw, (home_x, 5), home, "regular",
+                                 SIZE_BAR, theme.accent)
             self._bar_hitboxes.append(((home_x, 0, width, BAR_H), "home"))
 
             back = "[‹ BACK]"
-            back_w = self.fonts.textwidth(back, "regular", BAR_FONT)
+            back_w = self.fonts.textwidth(back, "regular", SIZE_BAR)
             back_x = home_x - back_w - 10
-            draw.text(
-                (back_x, 4), back, font=self.fonts.get("regular", BAR_FONT),
-                fill=theme.accent,
-            )
+            self.fonts.draw_text(draw, (back_x, 5), back, "regular",
+                                 SIZE_BAR, theme.accent)
             self._bar_hitboxes.append(((back_x, 0, home_x, BAR_H), "back"))
 
     def _bar_tap(self, x: int) -> bool:

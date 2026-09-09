@@ -70,7 +70,7 @@ class HomeView:
         rects = self._grid_rects(ctx)
         self._hitboxes = {}
         for rect, (label, target) in zip(rects, page_cards, strict=False):
-            draw_button(draw, rect, label, ctx.fonts, ctx.theme, size=20)
+            draw_button(draw, rect, label, ctx.fonts, ctx.theme)
             self._hitboxes[rect] = target
 
         x0, y0, x1, y1 = ctx.content

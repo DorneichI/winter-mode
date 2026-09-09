@@ -153,7 +153,7 @@ def ctx(theme, fonts, config):
         nav = Nav(HomeView(registry=registry, config=config))
         return Ctx(
             theme=theme, fonts=fonts, nav=nav,
-            content=(0, 28, 800, 480), width=800, height=480,
+            content=(0, 30, 800, 480), width=800, height=480,
             config=config, registry=registry,
         )
 
