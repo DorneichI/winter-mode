@@ -155,15 +155,19 @@ async function showHome() {
   const [device, modules] = await Promise.all([loadDevice(), api("/api/modules")]);
   $("#subtitle").textContent =
     `v${device.version} — ${device.network.web_url}`;
+  // the SETTINGS card opens the device groups (display, status bar);
+  // every other module card opens that module's own config page
   main.innerHTML = `<div class="grid">` +
-    `<div class="card" data-page="device">DEVICE<span class="hint">theme, display, status bar</span></div>` +
     modules.map((m) =>
       `<div class="card" data-module="${m.id}">${m.title}` +
-      `<span class="hint">${m.actions.length ? m.actions.length + " action(s)" : "configure"}</span></div>`)
+      `<span class="hint">${m.id === "settings" ? "display, status bar"
+        : m.actions.length ? m.actions.length + " action(s)" : "configure"}</span></div>`)
       .join("") + `</div>`;
   main.querySelectorAll(".card").forEach((card) => {
     card.addEventListener("click", () => {
-      card.dataset.module ? showModule(card.dataset.module) : showDevice();
+      card.dataset.module === "settings"
+        ? showDevice()
+        : showModule(card.dataset.module);
     });
   });
 }
