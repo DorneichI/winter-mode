@@ -22,6 +22,7 @@ from wintermode.theme import Theme
 
 STEP_HOLD_S = 0.5
 FINAL_HOLD_S = 1.2
+BLACK_BEAT_S = 1.0
 BOOT_BASE = max(CLEAN_SIZES)  # the clean size the bigger steps scale from
 
 
@@ -56,3 +57,8 @@ def play_boot(lcd, theme: Theme, fonts: Fonts, version: str) -> None:
         _draw_version(draw, fonts, theme, width, height, version)
         lcd.image(canvas)
         time.sleep(STEP_HOLD_S if size != steps[-1] else FINAL_HOLD_S)
+
+    # a black beat, then the interface takes over
+    draw.rectangle((0, 0, width, height), fill=(0, 0, 0))
+    lcd.image(canvas)
+    time.sleep(BLACK_BEAT_S)

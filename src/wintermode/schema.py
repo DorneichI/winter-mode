@@ -19,7 +19,7 @@ TYPES = ("bool", "choice", "int", "text", "time")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
-def _coerce(spec: dict, value: Any) -> Any:
+def _coerce(spec: dict, value: Any, strict: bool = False) -> Any:
     kind = spec.get("type")
     default = spec.get("default")
     try:
@@ -50,14 +50,31 @@ def _coerce(spec: dict, value: Any) -> Any:
             if isinstance(value, str) and TIME_RE.match(value):
                 return value
             raise ValueError(value)
+        log.warning("config: unknown schema type %r for spec %r", kind, spec)
+        raise ValueError(value)
     except (ValueError, TypeError, KeyError):
+        if strict:
+            raise
         log.warning(
             "config: %r rejected for %r (%s), using default %r",
             value, spec, kind, default,
         )
         return default
-    log.warning("config: unknown schema type %r for spec %r", kind, spec)
     return default
+
+
+def validate_strict(schema: dict, values: dict) -> dict:
+    """Like validate(), but rejects bad values instead of defaulting.
+
+    Used by web PUT endpoints so a bogus body is a 400 and the config
+    file stays untouched.
+    """
+    out: dict[str, Any] = {}
+    for key, value in values.items():
+        if key not in schema:
+            raise ValueError(f"unknown key {key!r}")
+        out[key] = _coerce(schema[key], value, strict=True)
+    return out
 
 
 def visible(spec: dict, values: dict) -> bool:

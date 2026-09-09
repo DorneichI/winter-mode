@@ -14,6 +14,7 @@ import time
 from wintermode import __version__
 from wintermode.config import DISPLAY_SCHEMA, THEME_SCHEMA
 from wintermode.context import Ctx
+from wintermode.net import ipv4 as _ipv4
 from wintermode.views import CardGrid, FormView, InfoView
 
 # the theme page: the theme choice plus the auto-schedule window —
@@ -29,19 +30,8 @@ THEME_PAGE_SCHEMA = {
 START = time.time()
 
 
-def _ipv4() -> str:
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.connect(("8.8.8.8", 80))
-        ip = sock.getsockname()[0]
-        sock.close()
-        return ip
-    except OSError:
-        return "unknown"
-
-
 def _web_url() -> str:
-    return f"http://{_ipv4()}:8080"  # port: the web server (step 6)
+    return f"http://{_ipv4()}:8080"
 
 
 def _uptime() -> str:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import queue
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -49,6 +50,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--config", type=Path, default=None, help="path to config.json"
     )
+    parser.add_argument(
+        "--web-port", type=int, default=None, help="web UI port (default 8080)"
+    )
     return parser.parse_args(argv)
 
 
@@ -84,6 +88,7 @@ class WinterApp:
         self._next_refresh = 0.0
         self.asleep = False
         self.last_touch = self.clock()[0]  # the sleep timer starts at boot
+        self.actions: queue.Queue = queue.Queue()  # web POSTs land here
         self._bar_hitboxes: list[tuple[tuple[int, int, int, int], str]] = []
 
     # --- context ----------------------------------------------------------
@@ -180,6 +185,15 @@ class WinterApp:
         points = self.touch.read(mapped=True)
         dirty = False
         rerender_content = False
+
+        # web-triggered actions execute here, on the main loop thread
+        while not self.actions.empty():
+            module_id, action_id = self.actions.get_nowait()
+            module = self.registry.get(module_id) if self.registry else None
+            if module is not None:
+                module.on_action(action_id, self._ctx(now, points, wall))
+            rerender_content = True
+            dirty = True
 
         events = self.tracker.update(points, now)
         if points:  # any finger activity resets the sleep timer
@@ -318,8 +332,16 @@ def main() -> None:
     with Display() as lcd, Touch(lcd.bus) as touch:
         theme = effective_theme(config, time.time())
         fonts = Fonts()
+        app = WinterApp(lcd, touch, theme, fonts, config=config,
+                        registry=registry)
+        # the web companion starts before the loop so it is up by boot-end
+        from wintermode.web.server import DEFAULT_PORT, WebServer
+
+        port = args.web_port or DEFAULT_PORT
+        server = WebServer(config, registry, app.actions, port=port)
+        server.start()
         play_boot(lcd, theme, fonts, __version__)
-        WinterApp(lcd, touch, theme, fonts, config=config, registry=registry).run()
+        app.run()
 
 
 if __name__ == "__main__":
