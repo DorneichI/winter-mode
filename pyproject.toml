@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "winter-mode"
+description = "A HomePod-style kitchen dashboard for the ER-TFTM070-4 display on a Raspberry Pi Zero W"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Immanuel Dorneich" }]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "Pillow>=9.1",
+    # TODO: switch to ertftm070>=0.3.0 once the shadow-diffing release is on PyPI.
+    "ertftm070 @ git+https://github.com/DorneichI/er-tftm070-4-driver@feat/shadow-diffing",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+sim = ["websockets>=14"]
+dev = ["pytest>=7", "ruff>=0.6", "websockets>=14"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+wintermode = ["fonts/*.ttf", "fonts/LICENSE.txt", "web/static/*.html"]
+
+[tool.setuptools.dynamic]
+version = { attr = "wintermode.__version__" }
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
