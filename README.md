@@ -105,8 +105,11 @@ Raspberry Pi OS Lite (Bookworm), headless — the service *is* the UI:
 ```bash
 git clone https://github.com/DorneichI/winter-mode /opt/winter-mode
 cd /opt/winter-mode
-python3 -m venv .venv && .venv/bin/pip install .
-sudo mkdir -p /etc/wintermode && sudo chown pi: /etc/wintermode
+python3 -m venv .venv
+# binary wheels where possible (Pillow on armv6); the ertftm070 sdist
+# compiles its C fast path — gcc must be installed
+.venv/bin/pip install --only-binary :all: --no-binary ertftm070 .
+sudo mkdir -p /etc/wintermode && sudo chown winter: /etc/wintermode
 sudo cp deploy/wintermode.service /etc/systemd/system/
 sudo systemctl enable --now wintermode
 ```
