@@ -53,14 +53,16 @@ LINE_COLORS = {
 MODES = ("transit", "walk", "bike", "car")
 
 SCHEMA = {
+    # local: stored in the gitignored config.local.json overlay, never
+    # in the tracked config.json
     "address": {"type": "text", "title": "Address", "maxlength": 120,
-                "default": ""},
+                "default": "", "local": True},
     "mode": {"type": "choice", "title": "Mode", "options": list(MODES),
              "default": "transit"},
-    # write_only: the web and panel never show a stored key, only offer
-    # to set a new one or reset it
+    # local + write_only: the web and panel never show a stored key,
+    # only offer to set a new one or reset it
     "api_key": {"type": "text", "title": "Google API key", "maxlength": 64,
-                "default": "", "write_only": True},
+                "default": "", "write_only": True, "local": True},
 }
 
 STATION_RADIUS = 8

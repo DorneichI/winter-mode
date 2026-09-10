@@ -441,6 +441,9 @@ def test_schema_covers_address_mode_and_key():
     assert SCHEMA["mode"]["default"] == "transit"
     # the key is a secret: write-only, never shown anywhere
     assert SCHEMA["api_key"]["write_only"] is True
+    # both are local: stored in the gitignored overlay, never committed
+    assert SCHEMA["api_key"]["local"] is True
+    assert SCHEMA["address"]["local"] is True
 
 
 def test_module_contract_is_complete(boston):

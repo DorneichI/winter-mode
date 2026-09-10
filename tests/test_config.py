@@ -47,11 +47,12 @@ def test_save_is_atomic(tmp_path, monkeypatch):
 
     path = tmp_path / "config.json"
     config = Config(path)
-    config.data["theme"] = "night"
-    monkeypatch.setattr(os, "replace", lambda *a: (_ for _ in ()).throw(OSError()))
-    config.save()
+    monkeypatch.setattr(os, "replace",
+                        lambda *a: (_ for _ in ()).throw(OSError()))
+    config.update({"theme": "night"})  # its save() fails mid-write
     # the original file still holds the defaults; the tmp file may linger
     assert json.loads(path.read_text())["theme"] == "dark"
+    assert config.data["theme"] == "night"  # the change lives in memory
 
 
 def test_every_save_bumps_generation(tmp_path):
@@ -84,6 +85,45 @@ def test_update_module_with_a_schema_validates_the_write(tmp_path):
     # without a spec the caller keeps the old permissive behavior
     config.update_module("boston", {"count": 500})
     assert config.data["boston"]["count"] == 500
+
+
+def test_local_overlay_merges_over_the_base(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"boston": {"mode": "transit"}}))
+    (tmp_path / "config.local.json").write_text(
+        json.dumps({"boston": {"api_key": "secret"}}))
+    config = Config(path)
+    # merged view holds both; the base file itself is untouched
+    assert config.data["boston"] == {"mode": "transit", "api_key": "secret"}
+    assert json.loads(path.read_text())["boston"] == {"mode": "transit"}
+
+
+def test_update_local_writes_only_the_overlay(tmp_path):
+    path = tmp_path / "config.json"
+    config = Config(path)
+    config.update_local({"boston": {"api_key": "secret"}})
+    assert json.loads(path.read_text()).get("boston") is None
+    assert json.loads((tmp_path / "config.local.json").read_text())["boston"] \
+        == {"api_key": "secret"}
+    assert config.data["boston"]["api_key"] == "secret"
+
+
+def test_base_save_never_leaks_local_values(tmp_path):
+    path = tmp_path / "config.json"
+    config = Config(path)
+    config.update_local({"boston": {"api_key": "secret"}})
+    config.update({"theme": "night"})  # a normal write triggers save()
+    on_disk = json.loads(path.read_text())
+    assert on_disk["theme"] == "night"
+    assert "api_key" not in json.dumps(on_disk)  # the secret stayed out
+
+
+def test_unreadable_local_overlay_is_ignored(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"boston": {"mode": "transit"}}))
+    (tmp_path / "config.local.json").write_text("{ not json")
+    config = Config(path)
+    assert config.data["boston"]["mode"] == "transit"
 
 
 def test_a_corrupt_file_is_rewritten_not_just_healed_in_memory(tmp_path):

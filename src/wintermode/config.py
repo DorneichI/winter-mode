@@ -5,6 +5,12 @@ mid-write can never truncate the config.  Every save bumps `generation`;
 the main loop watches it to reload live.  Reserved top-level keys are
 validated here; per-module namespaces are validated by the registry
 against each module's config_schema.
+
+Secrets: `config.json` is the tracked template with defaults only.  A
+gitignored `config.local.json` alongside it holds local overrides
+(addresses, API keys — anything a schema marks `"local": true`); it is
+deep-merged over the base at load, and `Config.save()` never writes
+those values back into the tracked file.
 """
 
 from __future__ import annotations
@@ -95,10 +101,13 @@ def _coerce_statusbar(value: Any) -> dict[str, bool]:
 class Config:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
+        self.local_path = self.path.with_name(self.path.stem + ".local.json")
         self._lock = threading.Lock()
         self.generation = 0
         self._healed = False  # the file needed repair while loading
-        self.data: dict[str, Any] = self._load()
+        self._base: dict[str, Any] = self._load(self.path)
+        self._local: dict[str, Any] = self._load_local()
+        self.data: dict[str, Any] = self._merged()
         if not self.path.exists():
             log.info("config: no %s, writing defaults", self.path)
             self.save()
@@ -110,19 +119,19 @@ class Config:
 
     # --- loading -----------------------------------------------------------
 
-    def _load(self) -> dict[str, Any]:
+    def _load(self, path: Path) -> dict[str, Any]:
         data = deepcopy(DEFAULTS)
         raw: Any = {}
-        if self.path.exists():
+        if path.exists():
             try:
-                raw = json.loads(self.path.read_text())
+                raw = json.loads(path.read_text())
             except (OSError, ValueError):
-                log.warning("config: unreadable %s, using defaults", self.path)
+                log.warning("config: unreadable %s, using defaults", path)
                 self._healed = True
                 raw = {}
             if not isinstance(raw, dict):
                 log.warning("config: %s is not an object, using defaults",
-                            self.path)
+                            path)
                 self._healed = True
                 raw = {}
             _deep_update(data, raw)
@@ -137,26 +146,68 @@ class Config:
             self._healed = True
         return data
 
+    def _load_local(self) -> dict[str, Any]:
+        """The gitignored overlay: unreadable or absent means empty."""
+        if not self.local_path.exists():
+            return {}
+        try:
+            raw = json.loads(self.local_path.read_text())
+        except (OSError, ValueError):
+            log.warning("config: unreadable %s, ignoring", self.local_path)
+            return {}
+        if not isinstance(raw, dict):
+            log.warning("config: %s is not an object, ignoring",
+                        self.local_path)
+            return {}
+        return raw
+
+    def _merged(self) -> dict[str, Any]:
+        merged = deepcopy(self._base)
+        _deep_update(merged, self._local)
+        return merged
+
+    def _refresh(self) -> None:
+        self.data = self._merged()
+
     # --- writing -----------------------------------------------------------
 
+    def _write(self, path: Path, payload: dict) -> bool:
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        try:
+            tmp.write_text(json.dumps(payload, indent=2) + "\n")
+            tmp.replace(path)
+        except OSError:
+            log.warning("config: could not write %s (read-only?)", path)
+            return False
+        return True
+
     def save(self) -> None:
+        """Write the tracked base file — local values never leak into it."""
         with self._lock:
-            tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-            try:
-                tmp.write_text(json.dumps(self.data, indent=2) + "\n")
-                tmp.replace(self.path)
-            except OSError:
-                log.warning("config: could not write %s (read-only?)", self.path)
-                return
-            self.generation += 1
+            if self._write(self.path, self._base):
+                self.generation += 1
+
+    def save_local(self) -> None:
+        """Write the gitignored overlay only."""
+        with self._lock:
+            if self._write(self.local_path, self._local):
+                self.generation += 1
 
     # --- mutation ----------------------------------------------------------
 
     def update(self, mapping: dict[str, Any]) -> None:
-        """Deep-merge top-level namespaces (e.g. {"theme": "night"})."""
+        """Deep-merge top-level namespaces into the base file."""
         with self._lock:
-            _deep_update(self.data, mapping)
+            _deep_update(self._base, mapping)
+        self._refresh()
         self.save()
+
+    def update_local(self, mapping: dict[str, Any]) -> None:
+        """Deep-merge into the overlay: the home for local-only secrets."""
+        with self._lock:
+            _deep_update(self._local, mapping)
+        self._refresh()
+        self.save_local()
 
     def update_module(self, module_id: str, values: dict,
                       spec: dict | None = None) -> dict:
@@ -169,12 +220,17 @@ class Config:
         Returns the values actually stored.
         """
         with self._lock:
-            namespace = self.data.setdefault(module_id, {})
+            namespace = self._base.setdefault(module_id, {})
             if not isinstance(namespace, dict):
-                namespace = self.data[module_id] = {}
-            merged = {**namespace, **values}
+                namespace = self._base[module_id] = {}
+            merged = {**self.data.get(module_id, {}), **values}
             if spec:
                 merged = schema.validate(spec, merged)
-            _deep_update(namespace, merged)
+            # persist only the keys this call touched — validated and
+            # clamped, but never the overlay's local values that happen
+            # to sit in the merged view
+            for key in values:
+                namespace[key] = merged[key]
+        self._refresh()
         self.save()
         return merged

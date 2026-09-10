@@ -147,7 +147,9 @@ async function bindForm(container, schema, values, putPath, masked) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const body = {};
-    for (const control of form.querySelectorAll("[data-key]")) {
+    // inputs and selects only — buttons (the reset-key control) carry
+    // data-key too, and reading one would overwrite the typed value
+    for (const control of form.querySelectorAll("input[data-key], select[data-key]")) {
       const key = control.dataset.key;
       // an untouched secret stays untouched — empty does not mean clear
       if (control.dataset.writeOnly && control.value === "") continue;

@@ -77,6 +77,9 @@ class WebServer:
                 self.send_response(code)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(body)))
+                # everything is tiny and changes live — a cached page is
+                # a stale settings form
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -168,20 +171,30 @@ class WebServer:
                     module = self._module(parts[0])
                     if module is None:
                         return
+                    spec = module.config_schema or {}
                     try:
-                        schema.validate_strict(module.config_schema or {}, body)
+                        schema.validate_strict(spec, body)
                         current = config.data.get(module.id, {})
                         if not isinstance(current, dict):
                             current = {}
-                        valid = schema.validate(module.config_schema or {},
-                                                {**current, **body})
+                        valid = schema.validate(spec, {**current, **body})
                     except ValueError as error:
                         return self._send(400, {"error": str(error)})
                     except (TypeError, KeyError) as error:
                         # null for an int, a choice spec with no options:
                         # the body is bad, the handler must still answer
                         return self._send(400, {"error": f"invalid value: {error}"})
-                    config.update_module(module.id, valid)
+                    # fields the schema marks local (addresses, keys)
+                    # belong in the gitignored overlay, never in the
+                    # tracked config.json
+                    local_fields = {key: valid[key] for key, field in
+                                    spec.items()
+                                    if key in valid and field.get("local")}
+                    normal_fields = {key: value for key, value in
+                                     valid.items() if key not in local_fields}
+                    config.update_module(module.id, normal_fields)
+                    if local_fields:
+                        config.update_local({module.id: local_fields})
                     return self._send(200, {"values": valid})
                 group = self._split(path, "/api/device/", 1)
                 if group:

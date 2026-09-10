@@ -8,3 +8,6 @@ venv/
 *.so
 .pytest_cache/
 .ruff_cache/
+
+# local secrets overlay: addresses, API keys
+config.local.json

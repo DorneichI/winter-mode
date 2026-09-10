@@ -96,7 +96,10 @@ alert as a descriptive message.
    wall panel making a few queries a day will ever use. The key sits in
    plaintext in `config.json`, like every other setting.
 2. Enter your address in the `address` field — it is sent to Google as
-   free text, which geocodes it.
+   free text, which geocodes it. The address and the key are both
+   `"local"` fields: they are stored in the gitignored
+   `config.local.json` next to the config, never in the committed
+   `config.json`.
 3. Pick the default travel `mode` (transit is the one the app is tuned
    for).
 
@@ -171,7 +174,10 @@ sudo systemctl enable --now wintermode
 The display turns on at boot, the web UI comes up with the network, and
 `Restart=always` brings it back if it crashes. Config lives at
 `/etc/wintermode/config.json` (self-healing: missing keys are filled
-with defaults on load; hand-edits never crash it).
+with defaults on load; hand-edits never crash it). Values a module
+marks `"local": true` — addresses, API keys — live in a gitignored
+`/etc/wintermode/config.local.json` overlay, so the tracked config
+never carries secrets.
 
 ## The web API
 

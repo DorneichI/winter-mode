@@ -132,15 +132,31 @@ class Registry:
         return module_id in self._all
 
     def validate_namespaces(self) -> None:
-        """Run every module's config_schema over its config namespace."""
-        changed = False
+        """Run every module's config_schema over its config namespace.
+
+        Healing writes back what changed, but local (secret) fields go
+        to the overlay — the tracked file never receives them.
+        """
+        patches = {}
+        local_patches = {}
         for module in self._all.values():
             if not module.config_schema:
                 continue
             current = self.config.data.get(module.id, {})
             valid = schema.validate(module.config_schema, current)
-            if valid != current:
-                self.config.data[module.id] = valid
-                changed = True
-        if changed:
-            self.config.save()
+            if valid == current:
+                continue
+            local_fields = {key: valid[key] for key, field in
+                            module.config_schema.items()
+                            if key in valid and field.get("local")}
+            normal = {key: value for key, value in valid.items()
+                      if key not in local_fields}
+            if normal != {key: current.get(key) for key in normal}:
+                patches[module.id] = normal
+            if local_fields != {key: current.get(key)
+                                for key in local_fields}:
+                local_patches[module.id] = local_fields
+        if patches:
+            self.config.update(patches)
+        if local_patches:
+            self.config.update_local(local_patches)

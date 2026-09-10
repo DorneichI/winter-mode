@@ -18,7 +18,7 @@ def web(config, fake_module):
         fake_module("boston", actions=[{"id": "reset", "title": "Reset"}],
                     config_schema={
                         "secret": {"type": "text", "default": "",
-                                   "write_only": True}}),
+                                   "write_only": True, "local": True}}),
     ]
     registry = Registry(modules, config)
     registry.validate_namespaces()
@@ -87,7 +87,9 @@ def test_unknown_module_is_404(web):
 
 def test_write_only_fields_never_read_back(web):
     _server, _actions, config, _registry, port = web
-    config.update_module("boston", {"secret": "hunter2"})
+    status, _payload = request("PUT", port, "/api/modules/boston/config",
+                               {"secret": "hunter2"})
+    assert status == 200
     status, payload = request("GET", port, "/api/modules/boston/config")
     assert status == 200
     assert payload["values"]["secret"] == ""  # masked, not the secret
@@ -105,6 +107,23 @@ def test_write_only_field_set_and_reset(web):
                               {"secret": ""})
     assert status == 200
     assert config.data["boston"]["secret"] == ""
+
+
+def test_local_fields_route_to_the_overlay_not_the_tracked_file(web,
+                                                                tmp_path):
+    _server, _actions, config, _registry, port = web
+    status, payload = request("PUT", port, "/api/modules/boston/config",
+                              {"secret": "hunter2"})
+    assert status == 200
+    # the tracked config.json never sees the secret; the overlay does
+    assert "hunter2" not in (tmp_path / "config.json").read_text()
+    local = json.loads((tmp_path / "config.local.json").read_text())
+    assert local["boston"]["secret"] == "hunter2"
+    assert config.data["boston"]["secret"] == "hunter2"  # merged view
+    # and reads stay masked
+    status, payload = request("GET", port, "/api/modules/boston/config")
+    assert payload["values"]["secret"] == ""
+    assert payload["masked"] == ["secret"]
 
 
 def test_action_post_enqueues_for_the_main_loop(web):
