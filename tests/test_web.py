@@ -15,7 +15,10 @@ def web(config, fake_module):
     modules = [
         fake_module("clock", config_schema={
             "format24": {"type": "bool", "default": True}}),
-        fake_module("dummy", actions=[{"id": "reset", "title": "Reset"}]),
+        fake_module("boston", actions=[{"id": "reset", "title": "Reset"}],
+                    config_schema={
+                        "secret": {"type": "text", "default": "",
+                                   "write_only": True}}),
     ]
     registry = Registry(modules, config)
     registry.validate_namespaces()
@@ -49,7 +52,7 @@ def test_modules_endpoint_lists_modules_with_schemas(web):
     status, payload = request("GET", port, "/api/modules")
     assert status == 200
     ids = [m["id"] for m in payload]
-    assert ids == ["clock", "dummy"]
+    assert ids == ["clock", "boston"]
     assert payload[0]["schema"] == {"format24": {"type": "bool",
                                                  "default": True}}
 
@@ -82,14 +85,36 @@ def test_unknown_module_is_404(web):
     assert request("GET", port, "/api/modules/ghost/config")[0] == 404
 
 
+def test_write_only_fields_never_read_back(web):
+    _server, _actions, config, _registry, port = web
+    config.update_module("boston", {"secret": "hunter2"})
+    status, payload = request("GET", port, "/api/modules/boston/config")
+    assert status == 200
+    assert payload["values"]["secret"] == ""  # masked, not the secret
+    assert payload["masked"] == ["secret"]  # the page shows a reset button
+
+
+def test_write_only_field_set_and_reset(web):
+    _server, _actions, config, _registry, port = web
+    status, payload = request("PUT", port, "/api/modules/boston/config",
+                              {"secret": "new-key"})
+    assert status == 200
+    assert config.data["boston"]["secret"] == "new-key"
+    # an explicit empty write resets it
+    status, payload = request("PUT", port, "/api/modules/boston/config",
+                              {"secret": ""})
+    assert status == 200
+    assert config.data["boston"]["secret"] == ""
+
+
 def test_action_post_enqueues_for_the_main_loop(web):
     _server, actions, _config, _registry, port = web
     status, payload = request("POST", port,
-                              "/api/modules/dummy/actions/reset")
+                              "/api/modules/boston/actions/reset")
     assert status == 200 and payload == {"ok": True}
-    assert actions.get_nowait() == ("dummy", "reset")
+    assert actions.get_nowait() == ("boston", "reset")
     status, _payload = request("POST", port,
-                               "/api/modules/dummy/actions/nope")
+                               "/api/modules/boston/actions/nope")
     assert status == 400
 
 
@@ -142,7 +167,7 @@ def test_statusbar_schema_hides_modules_that_publish_nothing(web, config,
     statusbar = next(g for g in device["groups"] if g["id"] == "statusbar")
     assert "settings" not in statusbar["schema"]
     assert "settings" not in statusbar["values"]
-    assert set(statusbar["schema"]) == {"clock", "dummy", "rotate_seconds"}
+    assert set(statusbar["schema"]) == {"clock", "boston", "rotate_seconds"}
 
 
 def test_put_device_theme_is_not_404(web):
@@ -180,11 +205,11 @@ def test_device_puts_are_coerced_and_clamped_before_saving(web):
 
 def test_a_partial_statusbar_put_keeps_the_other_toggles(web):
     _server, _actions, config, _registry, port = web
-    config.update({"statusbar": {"clock": False, "dummy": True}})
+    config.update({"statusbar": {"clock": False, "boston": True}})
     assert request("PUT", port, "/api/device/statusbar",
                    {"rotate_seconds": 30})[0] == 200
     assert config.data["statusbar"]["clock"] is False
-    assert config.data["statusbar"]["dummy"] is True
+    assert config.data["statusbar"]["boston"] is True
     assert config.data["statusbar_rotate"] == 30
 
 

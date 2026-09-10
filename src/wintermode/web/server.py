@@ -37,6 +37,10 @@ FONT_FILES = {
     "3270SemiCondensed-Regular.ttf": FONTS_DIR / "3270SemiCondensed-Regular.ttf",
 }
 
+# the boston map graph, edited by the /map arrangement page
+GRAPH_PATH = Path(__file__).resolve().parent.parent / "modules" / "boston" / \
+    "graph.json"
+
 
 def _theme_tokens(theme) -> dict[str, str]:
     def rgb(color) -> str:
@@ -104,6 +108,9 @@ class WebServer:
                 if path == "/":
                     page = (STATIC_DIR / "index.html").read_bytes()
                     return self._send(200, page, "text/html; charset=utf-8")
+                if path == "/map":
+                    page = (STATIC_DIR / "map.html").read_bytes()
+                    return self._send(200, page, "text/html; charset=utf-8")
                 if path.startswith("/font/"):
                     name = path[len("/font/"):]
                     font_path = FONT_FILES.get(name)
@@ -111,6 +118,12 @@ class WebServer:
                         return self._send(200, font_path.read_bytes(),
                                           "font/ttf")
                     return self._send(404, {"error": "unknown font"})
+                if path == "/api/boston/graph":
+                    try:
+                        data = json.loads(GRAPH_PATH.read_text())
+                    except (OSError, ValueError):
+                        return self._send(500, {"error": "unreadable graph"})
+                    return self._send(200, data)
                 if path == "/api/modules":
                     payload = [{
                         "id": module.id, "title": module.title,
@@ -126,9 +139,19 @@ class WebServer:
                     module = self._module(parts[0])
                     if module is None:
                         return
+                    spec = module.config_schema or {}
+                    values = dict(config.data.get(module.id, {}))
+                    # write-only fields (api keys) leave the panel, not
+                    # the browser: a set value reads back as empty, and
+                    # the masked list tells the page it can be reset
+                    masked = [key for key, field in spec.items()
+                              if field.get("write_only") and values.get(key)]
+                    for key in masked:
+                        values[key] = ""
                     return self._send(200, {
-                        "schema": module.config_schema or {},
-                        "values": config.data.get(module.id, {}),
+                        "schema": spec,
+                        "values": values,
+                        "masked": masked,
                     })
                 self._send(404, {"error": "not found"})
 
@@ -138,6 +161,8 @@ class WebServer:
                 body = self._json_body()
                 if body is None:
                     return self._send(400, {"error": "expected a JSON object"})
+                if path == "/api/boston/graph":
+                    return self._put_graph(body)
                 parts = self._split(path, "/api/modules/", 2)
                 if parts and parts[1] == "config":
                     module = self._module(parts[0])
@@ -204,6 +229,39 @@ class WebServer:
                         for group in device.groups(config, registry)
                     ],
                 }
+
+            def _put_graph(self, body: dict) -> None:
+                """Move boston stations: apply {vertices: [{id, x, y}]} to
+                graph.json and tell the module to re-read it."""
+                moved = body.get("vertices")
+                if not isinstance(moved, list) or not moved:
+                    return self._send(400, {"error": "vertices must be a list"})
+                try:
+                    graph = json.loads(GRAPH_PATH.read_text())
+                except (OSError, ValueError):
+                    return self._send(500, {"error": "unreadable graph"})
+                known = {v["id"]: v for v in graph.get("vertices", [])}
+                try:
+                    for entry in moved:
+                        vid = entry.get("id")
+                        if vid not in known:
+                            return self._send(
+                                400, {"error": f"unknown station {vid!r}"})
+                        x = float(entry.get("x"))
+                        y = float(entry.get("y"))
+                        if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+                            return self._send(
+                                400, {"error": "x/y must be within 0..1"})
+                        known[vid]["x"] = x
+                        known[vid]["y"] = y
+                except (TypeError, ValueError):
+                    return self._send(400, {"error": "invalid station entry"})
+                try:
+                    GRAPH_PATH.write_text(json.dumps(graph, indent=2) + "\n")
+                except OSError:
+                    return self._send(500, {"error": "could not write graph"})
+                actions.put(("boston", "reload"))  # main loop re-reads it
+                return self._send(200, {"ok": True})
 
             def _put_device(self, group_id: str, body: dict) -> None:
                 group = device.group_by_id(config, registry, group_id)

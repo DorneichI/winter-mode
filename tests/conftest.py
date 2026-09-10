@@ -157,7 +157,7 @@ def make_app(theme, fonts, config, fake_module):
         touch = ScriptedTouch(touch_script or [])
         clock = FakeClock(mono, wall)
         if registry is None:
-            registry = Registry([fake_module("clock"), fake_module("dummy")],
+            registry = Registry([fake_module("clock"), fake_module("boston")],
                                 config)
         app = WinterApp(lcd, touch, theme, fonts, clock=clock,
                         config=config, registry=registry)

@@ -153,7 +153,7 @@ def test_statusbar_toggle_hides_module_items(make_app, fake_module):
 
     app, lcd, touch, clock = make_app()
     present(app, lcd)
-    app.registry._all["dummy"] = Chatty("dummy")
+    app.registry._all["boston"] = Chatty("boston")
     # the bar redraws once a second — tick the wall clock to repaint it
     clock.set(1001.0, 1_700_000_001.0)
     present(app, lcd)
@@ -165,7 +165,7 @@ def test_statusbar_toggle_hides_module_items(make_app, fake_module):
         )
 
     assert dim_pixels_in_bar()  # CHATTER is shown
-    app.config.update({"statusbar": {"dummy": False}})
+    app.config.update({"statusbar": {"boston": False}})
     app._step()
     assert not dim_pixels_in_bar()  # hidden by the toggle
 
@@ -339,16 +339,16 @@ def test_actions_queued_while_asleep_run_before_the_wake(make_app):
     clock.set(1010.0, 1_700_000_010.0)
     app._step()  # asleep
 
-    # the real dummy module's reset action, wired to its own namespace
-    from wintermode.modules.dummy.module import Dummy
+    # the real boston module's abandon action, wired to its own namespace
+    from wintermode.modules.boston.module import Boston
 
-    app.registry._all["dummy"] = Dummy()
-    assert app.registry._all["dummy"].id == "dummy"
-    app.config.update_module("dummy", {"count": 7})
-    app.actions.put(("dummy", "reset"))
+    app.registry._all["boston"] = Boston()
+    assert app.registry._all["boston"].id == "boston"
+    before = app.registry._all["boston"]._seq
+    app.actions.put(("boston", "abandon"))
     assert app._drain_actions(1010.0, [], 1_700_000_010.0) is True
     assert app.actions.empty()
-    assert app.config.data["dummy"]["count"] == 0
+    assert app.registry._all["boston"]._seq == before + 1  # query abandoned
 
 
 def test_the_waking_finger_never_fires_a_tap(make_app, point):

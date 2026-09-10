@@ -45,6 +45,12 @@
     border: 1px solid var(--border); padding: 6px 8px; font: inherit; }
   .field input:focus, .field select:focus { outline-color: var(--accent); }
   .field input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
+  .field input[type=password] { flex: 1.4; }
+  .field button.reset-key {
+    background: var(--bg); color: var(--dim);
+    border: 1px solid var(--border); font: inherit;
+    padding: 6px 10px; cursor: pointer; text-transform: uppercase; }
+  .field button.reset-key:hover { border-color: var(--accent); color: var(--accent); }
   .field.hidden { display: none; }
   .actions { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; }
   .actions button {
@@ -91,8 +97,10 @@ async function loadDevice() {
   return device;
 }
 
-/* the generic form renderer — same schema the touch UI gets */
-function formHTML(schema, values, submit) {
+/* the generic form renderer — same schema the touch UI gets.
+   write_only fields are secrets: never shown, only settable — the
+   stored value reads back empty, and a reset button clears it. */
+function formHTML(schema, values, submit, masked) {
   return Object.entries(schema).map(([key, spec]) => {
     const cond = spec.visible_if;
     const hidden = cond && values[cond.field] !== cond.equals;
@@ -112,6 +120,13 @@ function formHTML(schema, values, submit) {
     } else if (spec.type === "time") {
       control = `<input type="time" data-key="${esc(key)}"` +
         ` value="${esc(values[key] ?? spec.default ?? "07:00")}">`;
+    } else if (spec.write_only) {
+      const set = (masked ?? []).includes(key);
+      control = `<input type="password" data-key="${esc(key)}"` +
+        ` data-write-only="1" maxlength="${esc(spec.maxlength ?? 64)}"` +
+        ` value="" placeholder="${set ? "set — type to replace" : "not set"}">` +
+        (set ? `<button type="button" class="reset-key"` +
+               ` data-key="${esc(key)}">reset</button>` : "");
     } else {
       control = `<input type="text" data-key="${esc(key)}"` +
         ` maxlength="${esc(spec.maxlength ?? 64)}"` +
@@ -123,9 +138,10 @@ function formHTML(schema, values, submit) {
   }).join("") + `<div class="actions"><button type="submit">save</button></div>`;
 }
 
-async function bindForm(container, schema, values, putPath) {
+async function bindForm(container, schema, values, putPath, masked) {
   let current = values;
-  const html = `<form class="page">${formHTML(schema, current)}</form>`;
+  let isMasked = masked ?? [];
+  const html = `<form class="page">${formHTML(schema, current, null, isMasked)}</form>`;
   container.innerHTML = html;
   const form = container.querySelector("form");
   form.addEventListener("submit", async (e) => {
@@ -133,6 +149,8 @@ async function bindForm(container, schema, values, putPath) {
     const body = {};
     for (const control of form.querySelectorAll("[data-key]")) {
       const key = control.dataset.key;
+      // an untouched secret stays untouched — empty does not mean clear
+      if (control.dataset.writeOnly && control.value === "") continue;
       body[key] = control.type === "checkbox" ? control.checked
         : control.type === "number" ? Number(control.value) : control.value;
     }
@@ -148,9 +166,25 @@ async function bindForm(container, schema, values, putPath) {
         showSettings();
       } else {
         current = out.values ?? current;
-        await bindForm(container, schema, current, putPath);
+        await bindForm(container, schema, current, putPath,
+                       out.masked ?? isMasked);
       }
     } catch (err) { showError(err.message); }
+  });
+  // reset clears a stored secret explicitly
+  form.querySelectorAll("button.reset-key").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const out = await api(putPath, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [button.dataset.key]: "" }),
+        });
+        current = { ...current, ...out.values };
+        await bindForm(container, schema, current, putPath,
+                       out.masked ?? []);
+      } catch (err) { showError(err.message); }
+    });
   });
   // visible_if reacts to changes before saving
   form.addEventListener("change", (e) => {
@@ -209,7 +243,8 @@ async function showModule(id) {
     container.innerHTML = `<div class="info">no configurable fields</div>`;
   } else {
     await bindForm(container, data.schema, data.values,
-                   `/api/modules/${encodeURIComponent(id)}/config`);
+                   `/api/modules/${encodeURIComponent(id)}/config`,
+                   data.masked ?? []);
   }
   if (module.actions.length) {
     const box = document.createElement("div");

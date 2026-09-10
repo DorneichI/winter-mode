@@ -20,10 +20,10 @@ def test_missing_file_is_created_with_defaults(tmp_path):
 
 def test_extra_top_level_namespaces_survive_a_save_roundtrip(tmp_path):
     path = tmp_path / "config.json"
-    path.write_text(json.dumps({"dummy": {"count": 7}}))
+    path.write_text(json.dumps({"boston": {"count": 7}}))
     config = Config(path)
     config.save()
-    assert json.loads(path.read_text())["dummy"] == {"count": 7}
+    assert json.loads(path.read_text())["boston"] == {"count": 7}
 
 
 def test_invalid_reserved_value_falls_back_with_log(tmp_path, caplog):
@@ -65,25 +65,25 @@ def test_update_and_update_module_persist(tmp_path):
     path = tmp_path / "config.json"
     config = Config(path)
     config.update({"theme": "night"})
-    config.update_module("dummy", {"count": 5})
+    config.update_module("boston", {"count": 5})
     reloaded = json.loads(path.read_text())
     assert reloaded["theme"] == "night"
-    assert reloaded["dummy"] == {"count": 5}
+    assert reloaded["boston"] == {"count": 5}
 
 
 def test_update_module_with_a_schema_validates_the_write(tmp_path):
     # an unvalidated write persisted count=120 past max=99; the next boot
-    # clamped it to 99, and "+" then made the number go DOWN
-    from wintermode.modules.dummy.module import SCHEMA
+    # clamped it to 99, and "+" then made the number go DOWN.  The spec
+    # is local: this tests Config, not any particular module.
+    spec = {"count": {"type": "int", "min": 0, "max": 99, "default": 0}}
 
     config = Config(tmp_path / "config.json")
-    config.update_module("dummy", {"count": 120}, spec=SCHEMA)
-    assert config.data["dummy"]["count"] == 99
-    assert config.update_module("dummy", {"count": 3},
-                                spec=SCHEMA)["count"] == 3
+    config.update_module("boston", {"count": 120}, spec=spec)
+    assert config.data["boston"]["count"] == 99
+    assert config.update_module("boston", {"count": 3}, spec=spec)["count"] == 3
     # without a spec the caller keeps the old permissive behavior
-    config.update_module("dummy", {"count": 500})
-    assert config.data["dummy"]["count"] == 500
+    config.update_module("boston", {"count": 500})
+    assert config.data["boston"]["count"] == 500
 
 
 def test_a_corrupt_file_is_rewritten_not_just_healed_in_memory(tmp_path):

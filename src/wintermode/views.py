@@ -34,6 +34,7 @@ from wintermode.widgets import (
     draw_button,
     draw_button_auto,
     draw_paginator,
+    draw_scroller,
     paginate,
     text_y,
     truncate,
@@ -75,16 +76,25 @@ def _paged(items: list, page: int, page_size: int) -> tuple[int, int, list]:
 
 
 class PagedMixin:
-    """Shared page bookkeeping + prev/next hitbox handling."""
+    """Shared page bookkeeping + prev/next/scroll hitbox handling."""
 
     def __init__(self) -> None:
         self.page = 0
         self._paginator: dict[str, tuple | None] = {"prev": None, "next": None}
+        self._offset = 0
+        self._scroller: dict[str, tuple | None] = {"up": None, "down": None}
 
     def _tap_paginator(self, x: int, y: int) -> bool:
         for action, rect in self._paginator.items():
             if rect and rect[0] <= x < rect[2] and rect[1] <= y < rect[3]:
                 self.page += 1 if action == "next" else -1
+                return True
+        return False
+
+    def _tap_scroller(self, x: int, y: int) -> bool:
+        for action, rect in self._scroller.items():
+            if rect and rect[0] <= x < rect[2] and rect[1] <= y < rect[3]:
+                self._offset += 1 if action == "down" else -1
                 return True
         return False
 
@@ -210,10 +220,15 @@ class ListView(PagedMixin):
     one straight onto the nav stack with callbacks, which is all
     PickerView is.  A tap that changes a value re-renders the *next*
     frame via the app loop, so on_change never draws.
+
+    `scroll = True` swaps pagination for vertical scrolling: rows are
+    drawn from a clamped offset and [▲] [▼] buttons appear automatically
+    whenever the list overflows — grey and inert at the ends.
     """
 
     title = "LIST"
     interval = 0
+    scroll = False
     on_change: Callable[[Row, Any, Ctx], None] | None = None
     on_select: Callable[[Row, Ctx], None] | None = None
 
@@ -251,6 +266,15 @@ class ListView(PagedMixin):
                      - PAGINATOR_H - self._header_h(ctx))
         return max(1, available // ROW_H)
 
+    def _scroll_visible(self, rows: list[Row], per_page: int) -> list[Row]:
+        """The offset-clamped window over the rows, in scroll mode.
+
+        The clamp happens BEFORE the slice — a collection that shrank
+        under a stale offset would otherwise render past its end.
+        """
+        self._offset = min(max(self._offset, 0), max(len(rows) - per_page, 0))
+        return rows[self._offset : self._offset + per_page]
+
     def _header_h(self, ctx: Ctx) -> int:
         """Rows start below this many pixels of optional header."""
         return 0
@@ -264,16 +288,24 @@ class ListView(PagedMixin):
         self._draw_header(draw, ctx)
         y0 += self._header_h(ctx)
         rows = self.rows(ctx)
-        pages, self.page, page_rows = _paged(rows, self.page,
-                                            self._rows_per_page(ctx))
+        per_page = self._rows_per_page(ctx)
+        strip = (x0, y1 - PAGINATOR_H, x1, y1)
+        if self.scroll:
+            visible_rows = self._scroll_visible(rows, per_page)
+            self._scroller = draw_scroller(
+                draw, strip, self._offset, len(visible_rows), len(rows),
+                ctx.fonts, ctx.theme, size=SIZE_PAGINATOR,
+            )
+        else:
+            pages, self.page, visible_rows = _paged(rows, self.page, per_page)
+            self._paginator = draw_paginator(
+                draw, strip, self.page, pages,
+                ctx.fonts, ctx.theme, size=SIZE_PAGINATOR,
+            )
         self._rows = []
-        for i, row in enumerate(page_rows):
+        for i, row in enumerate(visible_rows):
             self._draw_row(draw, ctx, row, y0 + FORM_PAGE_MARGIN + i * ROW_H,
                            x0, x1)
-        self._paginator = draw_paginator(
-            draw, (x0, y1 - PAGINATOR_H, x1, y1), self.page, pages,
-            ctx.fonts, ctx.theme, size=SIZE_PAGINATOR,
-        )
         return True
 
     def _draw_row(self, draw, ctx: Ctx, row: Row, y0: int, x0: int,
@@ -386,6 +418,8 @@ class ListView(PagedMixin):
         for (rx0, ry0, rx1, ry1), key, action in self._rows:
             if rx0 <= x < rx1 and ry0 <= y < ry1:
                 return self._apply(action, key, ctx)
+        if self.scroll:
+            return self._tap_scroller(x, y)
         return self._tap_paginator(x, y)
 
     def _apply(self, action: str, key: str, ctx: Ctx) -> bool:
@@ -541,11 +575,17 @@ class FormView(ListView):
     def _fields(self, ctx: Ctx) -> list[Row]:
         """One Row per visible schema field — hidden fields never render."""
         values = self.get_values()
-        return [
-            Row(key=key, label=spec.get("title", key), value=values.get(key),
-                kind=spec.get("type", "text"), spec=spec)
-            for key, spec in self.schema.items() if visible(spec, values)
-        ]
+        rows = []
+        for key, spec in self.schema.items():
+            if not visible(spec, values):
+                continue
+            value = values.get(key)
+            if spec.get("write_only") and value:
+                value = "set"  # the panel never reveals a stored secret
+            rows.append(Row(key=key, label=spec.get("title", key),
+                            value=value, kind=spec.get("type", "text"),
+                            spec=spec))
+        return rows
 
     def on_change(self, row: Row, value: Any, ctx: Ctx) -> None:
         self.set_value(row.key, value)

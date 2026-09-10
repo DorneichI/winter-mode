@@ -58,6 +58,9 @@ def discover(base: Path = MODULES_DIR) -> list[Any]:
                 f"wintermode.modules.{entry.name}.module", module_path
             )
             imported = importlib.util.module_from_spec(spec)
+            # register BEFORE exec: class decorators (dataclasses etc.)
+            # look the module up in sys.modules while the body runs
+            sys.modules[spec.name] = imported
             assert spec.loader is not None
             spec.loader.exec_module(imported)
             module_obj = getattr(imported, "MODULE", None)
@@ -73,7 +76,6 @@ def discover(base: Path = MODULES_DIR) -> list[Any]:
                 entry.name, getattr(module_obj, "id", None),
             )
             continue
-        sys.modules[spec.name] = imported
         found.append(module_obj)
     return found
 

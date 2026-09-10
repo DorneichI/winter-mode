@@ -76,32 +76,33 @@ def test_discovery_accepts_an_instance(tmp_path):
 
 
 def test_registry_order_comes_from_config(config, fake_module):
-    registry = Registry([fake_module("clock"), fake_module("dummy"),
+    registry = Registry([fake_module("clock"), fake_module("boston"),
                          fake_module("settings")], config)
-    config.update({"modules": ["dummy", "clock"]})
+    config.update({"modules": ["boston", "clock"]})
     registry.refresh()
     # settings pinned first, then config order
     assert [m.id for m in registry.home_order()] == [
-        "settings", "dummy", "clock"]
+        "settings", "boston", "clock"]
 
 
 def test_registry_heals_the_modules_array(config, fake_module):
     config.update({"modules": ["ghost", "clock"]})
-    registry = Registry([fake_module("clock"), fake_module("dummy")], config)
+    registry = Registry([fake_module("clock"), fake_module("boston")], config)
     registry.refresh()
-    assert registry.enabled_ids() == ["clock", "dummy"]  # ghost dropped, dummy appended
-    assert config.data["modules"] == ["clock", "dummy"]
+    # ghost dropped, boston appended
+    assert registry.enabled_ids() == ["clock", "boston"]
+    assert config.data["modules"] == ["clock", "boston"]
 
 
 def test_registry_validates_module_namespaces(config, fake_module):
     module = fake_module(
-        "dummy",
+        "boston",
         config_schema={"count": {"type": "int", "min": 0, "max": 99,
                                  "default": 0}},
     )
-    config.update_module("dummy", {"count": 5000})  # out of bounds
+    config.update_module("boston", {"count": 5000})  # out of bounds
     Registry([module], config).validate_namespaces()
-    assert config.data["dummy"]["count"] == 99  # ints clamp, not fall back
+    assert config.data["boston"]["count"] == 99  # ints clamp, not fall back
 
 
 def test_registry_get_and_contains(config, fake_module):
@@ -114,4 +115,4 @@ def test_registry_get_and_contains(config, fake_module):
 
 def test_discovery_finds_the_real_skeleton_modules():
     found = discover()
-    assert [m.id for m in found] == ["clock", "dummy", "settings"]
+    assert [m.id for m in found] == ["boston", "clock", "settings"]

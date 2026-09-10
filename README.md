@@ -6,7 +6,7 @@ A HomePod-style kitchen dashboard for the ER-TFTM070-4 (7.0" TFT,
 
 Terminal aesthetics (IBM 3270, hard 1-bit pixels, no grays), tap-only
 navigation, a persistent status bar, auto-generated settings, and a
-tiny web companion. Ships with three modules — clock, dummy, settings —
+tiny web companion. Ships with three modules — clock, boston, settings —
 and a module contract that makes adding your own a one-file job.
 
 > # ⚠️ THIS PROJECT IS COMPLETELY VIBECODED ⚠️
@@ -17,7 +17,7 @@ and a module contract that makes adding your own a one-file job.
 > the screen, describing what was wrong, and demanding better.**
 >
 > **The good part:** it genuinely works. Every feature was eye-tested
-> by the human in the browser simulator, the 114-test suite passes,
+> by the human in the browser simulator, the 182-test suite passes,
 > and the ugly hardware quirks are documented instead of hidden.
 >
 > **The honest part:** no one has audited every line. There may be bugs
@@ -50,10 +50,11 @@ the Zero.
   that fits the panel), holds, cuts to black for a beat, then in.
 - **The bar** — always on top: clock, rotating status items published
   by modules, view title, `[‹ BACK]` `[⌂ HOME]`. Navigation is taps
-  only. No gestures, no scrolling: lists and grids paginate.
-- **Modules** — CLOCK (big ticking time), DUMMY (tap-to-bump counter,
-  a web "Reset" action, a config schema demoing every DSL type), and
-  SETTINGS (the hub).
+  only. No gestures: lists and grids paginate, and a list can opt into
+  vertical scrolling instead — `[▲] [▼]` buttons appear automatically
+  whenever it overflows, grey and inert at the ends.
+- **Modules** — CLOCK (big ticking time), BOSTON (the MBTA map + trip
+  planning, below), and SETTINGS (the hub).
 - **Settings** — a card grid into every configurable thing: DISPLAY
   (theme dark/light/auto with the light-window schedule, always-on vs
   wake-on-touch), STATUS BAR (a toggle per module that publishes status
@@ -68,6 +69,56 @@ the Zero.
 - **Web companion** — a REST server on :8080 plus one terminal-styled
   page: click into a module, edit its config (same schema as the touch
   form), trigger its actions. No live mirror, ~zero idle CPU.
+
+## The Boston app
+
+The BOSTON module draws the MBTA rapid-transit network — red, green,
+orange and blue lines — from a graph file, every station a circle
+button. Tap a station and a trip alert opens: *calculate trip from
+[address] to [station]?* with a mode picker (transit/walk/bike/car,
+defaulting to the settings value). The query for the default mode
+starts immediately in the background; confirming without changing the
+mode waits for it, changing the mode re-queries, cancel/X abandons.
+While the [Google Maps Directions
+API](https://developers.google.com/maps/documentation/directions)
+answers, the alert shows "computing…", then the itineraries: one at a
+time with `[<] [done] [>]` (grey and inert at the ends), legs in a
+scrollable list, trips always leaving now. Every failure — unreachable
+network, rejected key, unknown address, no route — lands in the same
+alert as a descriptive message.
+
+**Setup** (web UI → BOSTON → settings):
+
+1. Create a [Google Cloud](https://console.cloud.google.com) project,
+   enable the **Directions API**, create an API key, and paste it into
+   the `api_key` field. Billing must be enabled (Google requires it
+   even for the free tier); the monthly free credit is far more than a
+   wall panel making a few queries a day will ever use. The key sits in
+   plaintext in `config.json`, like every other setting.
+2. Enter your address in the `address` field — it is sent to Google as
+   free text, which geocodes it.
+3. Pick the default travel `mode` (transit is the one the app is tuned
+   for).
+
+**The graph** — `src/wintermode/modules/boston/graph.json`:
+
+```json
+{"vertices": [{"id": "park_street", "name": "Park Street", "x": 0.5,
+               "y": 0.44, "lat": 42.356395, "lon": -71.062424}],
+ "edges": [{"a": "haymarket", "b": "north_station",
+            "colors": ["green", "orange"]}]}
+```
+
+Vertices carry a display name, a normalized `x`/`y` position, and the
+real `lat`/`lon` the trip query targets. Edges connect *adjacent*
+stations (shared track, not transfer pairs) and carry the line colors
+of every line running on that segment; a multi-color edge is drawn
+wider, alternating the colors, one straight shot — today exactly one
+segment qualifies, Haymarket–North Station. All 118 stations and 119
+segments of the four lines came from the MBTA's published data (GTFS +
+the official line articles); the schematic positions are a first cut —
+move any station by editing its `x`/`y` and the panel follows on the
+next render.
 
 ## Adding a module
 

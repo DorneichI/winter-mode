@@ -1,0 +1,1784 @@
+{
+  "vertices": [
+    {
+      "id": "alewife",
+      "name": "Alewife",
+      "x": 0.33,
+      "y": 0.07,
+      "lat": 42.39583,
+      "lon": -71.141287
+    },
+    {
+      "id": "davis",
+      "name": "Davis",
+      "x": 0.355,
+      "y": 0.1,
+      "lat": 42.39674,
+      "lon": -71.121815
+    },
+    {
+      "id": "porter",
+      "name": "Porter",
+      "x": 0.38,
+      "y": 0.13,
+      "lat": 42.3884,
+      "lon": -71.119149
+    },
+    {
+      "id": "harvard",
+      "name": "Harvard",
+      "x": 0.405,
+      "y": 0.16,
+      "lat": 42.373362,
+      "lon": -71.118956
+    },
+    {
+      "id": "central",
+      "name": "Central",
+      "x": 0.435,
+      "y": 0.195,
+      "lat": 42.365486,
+      "lon": -71.103802
+    },
+    {
+      "id": "kendall_mit",
+      "name": "Kendall/MIT",
+      "x": 0.465,
+      "y": 0.23,
+      "lat": 42.3624908,
+      "lon": -71.0861765
+    },
+    {
+      "id": "charles_mgh",
+      "name": "Charles/MGH",
+      "x": 0.505,
+      "y": 0.27,
+      "lat": 42.361166,
+      "lon": -71.070628
+    },
+    {
+      "id": "park_street",
+      "name": "Park Street",
+      "x": 0.6,
+      "y": 0.36,
+      "lat": 42.3563946,
+      "lon": -71.0624242
+    },
+    {
+      "id": "downtown_crossing",
+      "name": "Downtown Crossing",
+      "x": 0.65,
+      "y": 0.4,
+      "lat": 42.355518,
+      "lon": -71.060225
+    },
+    {
+      "id": "south_station",
+      "name": "South Station",
+      "x": 0.66,
+      "y": 0.46,
+      "lat": 42.352271,
+      "lon": -71.055242
+    },
+    {
+      "id": "broadway",
+      "name": "Broadway",
+      "x": 0.66,
+      "y": 0.52,
+      "lat": 42.342622,
+      "lon": -71.056967
+    },
+    {
+      "id": "andrew",
+      "name": "Andrew",
+      "x": 0.66,
+      "y": 0.58,
+      "lat": 42.330154,
+      "lon": -71.057655
+    },
+    {
+      "id": "jfk_umass",
+      "name": "JFK/UMass",
+      "x": 0.67,
+      "y": 0.65,
+      "lat": 42.320685,
+      "lon": -71.052391
+    },
+    {
+      "id": "savin_hill",
+      "name": "Savin Hill",
+      "x": 0.62,
+      "y": 0.7,
+      "lat": 42.31129,
+      "lon": -71.053331
+    },
+    {
+      "id": "fields_corner",
+      "name": "Fields Corner",
+      "x": 0.575,
+      "y": 0.745,
+      "lat": 42.300093,
+      "lon": -71.061667
+    },
+    {
+      "id": "shawmut",
+      "name": "Shawmut",
+      "x": 0.535,
+      "y": 0.785,
+      "lat": 42.2931258,
+      "lon": -71.065738
+    },
+    {
+      "id": "ashmont",
+      "name": "Ashmont",
+      "x": 0.5,
+      "y": 0.82,
+      "lat": 42.28452,
+      "lon": -71.063777
+    },
+    {
+      "id": "north_quincy",
+      "name": "North Quincy",
+      "x": 0.7,
+      "y": 0.71,
+      "lat": 42.275275,
+      "lon": -71.029583
+    },
+    {
+      "id": "wollaston",
+      "name": "Wollaston",
+      "x": 0.715,
+      "y": 0.755,
+      "lat": 42.2665139,
+      "lon": -71.0203369
+    },
+    {
+      "id": "quincy_center",
+      "name": "Quincy Center",
+      "x": 0.725,
+      "y": 0.8,
+      "lat": 42.251809,
+      "lon": -71.005409
+    },
+    {
+      "id": "quincy_adams",
+      "name": "Quincy Adams",
+      "x": 0.735,
+      "y": 0.845,
+      "lat": 42.233391,
+      "lon": -71.007153
+    },
+    {
+      "id": "braintree",
+      "name": "Braintree",
+      "x": 0.75,
+      "y": 0.885,
+      "lat": 42.2078543,
+      "lon": -71.0011385
+    },
+    {
+      "id": "oak_grove",
+      "name": "Oak Grove",
+      "x": 0.67,
+      "y": 0.02,
+      "lat": 42.43668,
+      "lon": -71.071097
+    },
+    {
+      "id": "malden_center",
+      "name": "Malden Center",
+      "x": 0.675,
+      "y": 0.075,
+      "lat": 42.426632,
+      "lon": -71.07411
+    },
+    {
+      "id": "wellington",
+      "name": "Wellington",
+      "x": 0.675,
+      "y": 0.13,
+      "lat": 42.40237,
+      "lon": -71.077082
+    },
+    {
+      "id": "assembly",
+      "name": "Assembly",
+      "x": 0.675,
+      "y": 0.185,
+      "lat": 42.392811,
+      "lon": -71.077257
+    },
+    {
+      "id": "sullivan_square",
+      "name": "Sullivan Square",
+      "x": 0.675,
+      "y": 0.225,
+      "lat": 42.383975,
+      "lon": -71.076994
+    },
+    {
+      "id": "community_college",
+      "name": "Community College",
+      "x": 0.685,
+      "y": 0.255,
+      "lat": 42.373622,
+      "lon": -71.069533
+    },
+    {
+      "id": "north_station",
+      "name": "North Station",
+      "x": 0.69,
+      "y": 0.245,
+      "lat": 42.365577,
+      "lon": -71.06129
+    },
+    {
+      "id": "haymarket",
+      "name": "Haymarket",
+      "x": 0.65,
+      "y": 0.31,
+      "lat": 42.363021,
+      "lon": -71.05829
+    },
+    {
+      "id": "state",
+      "name": "State",
+      "x": 0.645,
+      "y": 0.35,
+      "lat": 42.358978,
+      "lon": -71.057598
+    },
+    {
+      "id": "chinatown",
+      "name": "Chinatown",
+      "x": 0.63,
+      "y": 0.44,
+      "lat": 42.352547,
+      "lon": -71.062752
+    },
+    {
+      "id": "tufts_medical_center",
+      "name": "Tufts Medical Center",
+      "x": 0.6,
+      "y": 0.475,
+      "lat": 42.349662,
+      "lon": -71.063917
+    },
+    {
+      "id": "back_bay",
+      "name": "Back Bay",
+      "x": 0.57,
+      "y": 0.51,
+      "lat": 42.34735,
+      "lon": -71.075727
+    },
+    {
+      "id": "massachusetts_avenue",
+      "name": "Massachusetts Avenue",
+      "x": 0.54,
+      "y": 0.545,
+      "lat": 42.341512,
+      "lon": -71.083423
+    },
+    {
+      "id": "ruggles",
+      "name": "Ruggles",
+      "x": 0.51,
+      "y": 0.58,
+      "lat": 42.336377,
+      "lon": -71.088961
+    },
+    {
+      "id": "roxbury_crossing",
+      "name": "Roxbury Crossing",
+      "x": 0.48,
+      "y": 0.615,
+      "lat": 42.331397,
+      "lon": -71.095451
+    },
+    {
+      "id": "jackson_square",
+      "name": "Jackson Square",
+      "x": 0.45,
+      "y": 0.65,
+      "lat": 42.323132,
+      "lon": -71.099592
+    },
+    {
+      "id": "stony_brook",
+      "name": "Stony Brook",
+      "x": 0.42,
+      "y": 0.69,
+      "lat": 42.317062,
+      "lon": -71.104248
+    },
+    {
+      "id": "green_street",
+      "name": "Green Street",
+      "x": 0.38,
+      "y": 0.73,
+      "lat": 42.310525,
+      "lon": -71.107414
+    },
+    {
+      "id": "forest_hills",
+      "name": "Forest Hills",
+      "x": 0.33,
+      "y": 0.765,
+      "lat": 42.300713,
+      "lon": -71.113943
+    },
+    {
+      "id": "bowdoin",
+      "name": "Bowdoin",
+      "x": 0.585,
+      "y": 0.31,
+      "lat": 42.361365,
+      "lon": -71.062037
+    },
+    {
+      "id": "government_center",
+      "name": "Government Center",
+      "x": 0.635,
+      "y": 0.335,
+      "lat": 42.359705,
+      "lon": -71.059215
+    },
+    {
+      "id": "aquarium",
+      "name": "Aquarium",
+      "x": 0.72,
+      "y": 0.31,
+      "lat": 42.359784,
+      "lon": -71.051652
+    },
+    {
+      "id": "maverick",
+      "name": "Maverick",
+      "x": 0.77,
+      "y": 0.27,
+      "lat": 42.3691186,
+      "lon": -71.0395296
+    },
+    {
+      "id": "airport",
+      "name": "Airport",
+      "x": 0.82,
+      "y": 0.245,
+      "lat": 42.374262,
+      "lon": -71.030395
+    },
+    {
+      "id": "wood_island",
+      "name": "Wood Island",
+      "x": 0.835,
+      "y": 0.205,
+      "lat": 42.3796403,
+      "lon": -71.0228654
+    },
+    {
+      "id": "orient_heights",
+      "name": "Orient Heights",
+      "x": 0.865,
+      "y": 0.17,
+      "lat": 42.386867,
+      "lon": -71.004736
+    },
+    {
+      "id": "suffolk_downs",
+      "name": "Suffolk Downs",
+      "x": 0.895,
+      "y": 0.135,
+      "lat": 42.3905007,
+      "lon": -70.9971226
+    },
+    {
+      "id": "beachmont",
+      "name": "Beachmont",
+      "x": 0.92,
+      "y": 0.105,
+      "lat": 42.3975423,
+      "lon": -70.9923194
+    },
+    {
+      "id": "revere_beach",
+      "name": "Revere Beach",
+      "x": 0.945,
+      "y": 0.075,
+      "lat": 42.4078425,
+      "lon": -70.9925332
+    },
+    {
+      "id": "wonderland",
+      "name": "Wonderland",
+      "x": 0.97,
+      "y": 0.045,
+      "lat": 42.41342,
+      "lon": -70.991648
+    },
+    {
+      "id": "kenmore",
+      "name": "Kenmore",
+      "x": 0.27,
+      "y": 0.4,
+      "lat": 42.348949,
+      "lon": -71.095169
+    },
+    {
+      "id": "hynes_convention_center",
+      "name": "Hynes Convention Center",
+      "x": 0.33,
+      "y": 0.4,
+      "lat": 42.347888,
+      "lon": -71.087903
+    },
+    {
+      "id": "copley",
+      "name": "Copley",
+      "x": 0.39,
+      "y": 0.4,
+      "lat": 42.349974,
+      "lon": -71.077447
+    },
+    {
+      "id": "arlington",
+      "name": "Arlington",
+      "x": 0.46,
+      "y": 0.385,
+      "lat": 42.351902,
+      "lon": -71.070893
+    },
+    {
+      "id": "boylston",
+      "name": "Boylston",
+      "x": 0.53,
+      "y": 0.37,
+      "lat": 42.35302,
+      "lon": -71.06459
+    },
+    {
+      "id": "science_park",
+      "name": "Science Park",
+      "x": 0.66,
+      "y": 0.215,
+      "lat": 42.366664,
+      "lon": -71.067666
+    },
+    {
+      "id": "lechmere",
+      "name": "Lechmere",
+      "x": 0.63,
+      "y": 0.19,
+      "lat": 42.371572,
+      "lon": -71.076584
+    },
+    {
+      "id": "blandford_street",
+      "name": "Blandford Street",
+      "x": 0.24,
+      "y": 0.4,
+      "lat": 42.349293,
+      "lon": -71.100258
+    },
+    {
+      "id": "boston_university_east",
+      "name": "Boston University East",
+      "x": 0.225,
+      "y": 0.4,
+      "lat": 42.349735,
+      "lon": -71.103889
+    },
+    {
+      "id": "boston_university_central",
+      "name": "Boston University Central",
+      "x": 0.21,
+      "y": 0.405,
+      "lat": 42.350082,
+      "lon": -71.106865
+    },
+    {
+      "id": "amory_street",
+      "name": "Amory Street",
+      "x": 0.195,
+      "y": 0.415,
+      "lat": 42.350992,
+      "lon": -71.114748
+    },
+    {
+      "id": "babcock_street",
+      "name": "Babcock Street",
+      "x": 0.18,
+      "y": 0.425,
+      "lat": 42.351616,
+      "lon": -71.119924
+    },
+    {
+      "id": "packards_corner",
+      "name": "Packards Corner",
+      "x": 0.165,
+      "y": 0.44,
+      "lat": 42.351967,
+      "lon": -71.125031
+    },
+    {
+      "id": "harvard_avenue",
+      "name": "Harvard Avenue",
+      "x": 0.15,
+      "y": 0.46,
+      "lat": 42.350243,
+      "lon": -71.131355
+    },
+    {
+      "id": "griggs_street",
+      "name": "Griggs Street",
+      "x": 0.135,
+      "y": 0.48,
+      "lat": 42.348545,
+      "lon": -71.134949
+    },
+    {
+      "id": "allston_street",
+      "name": "Allston Street",
+      "x": 0.12,
+      "y": 0.5,
+      "lat": 42.348701,
+      "lon": -71.137955
+    },
+    {
+      "id": "warren_street",
+      "name": "Warren Street",
+      "x": 0.105,
+      "y": 0.52,
+      "lat": 42.348343,
+      "lon": -71.140457
+    },
+    {
+      "id": "washington_street",
+      "name": "Washington Street",
+      "x": 0.09,
+      "y": 0.525,
+      "lat": 42.343864,
+      "lon": -71.142853
+    },
+    {
+      "id": "sutherland_road",
+      "name": "Sutherland Road",
+      "x": 0.075,
+      "y": 0.51,
+      "lat": 42.341614,
+      "lon": -71.146202
+    },
+    {
+      "id": "chiswick_road",
+      "name": "Chiswick Road",
+      "x": 0.065,
+      "y": 0.49,
+      "lat": 42.340805,
+      "lon": -71.150711
+    },
+    {
+      "id": "chestnut_hill_avenue",
+      "name": "Chestnut Hill Avenue",
+      "x": 0.055,
+      "y": 0.47,
+      "lat": 42.338169,
+      "lon": -71.15316
+    },
+    {
+      "id": "south_street",
+      "name": "South Street",
+      "x": 0.05,
+      "y": 0.45,
+      "lat": 42.3396,
+      "lon": -71.157661
+    },
+    {
+      "id": "boston_college",
+      "name": "Boston College",
+      "x": 0.045,
+      "y": 0.43,
+      "lat": 42.340081,
+      "lon": -71.166769
+    },
+    {
+      "id": "saint_marys_street",
+      "name": "Saint Marys Street",
+      "x": 0.3,
+      "y": 0.445,
+      "lat": 42.345974,
+      "lon": -71.107353
+    },
+    {
+      "id": "hawes_street",
+      "name": "Hawes Street",
+      "x": 0.285,
+      "y": 0.47,
+      "lat": 42.344906,
+      "lon": -71.111145
+    },
+    {
+      "id": "kent_street",
+      "name": "Kent Street",
+      "x": 0.265,
+      "y": 0.49,
+      "lat": 42.344074,
+      "lon": -71.114197
+    },
+    {
+      "id": "saint_paul_street",
+      "name": "Saint Paul Street",
+      "x": 0.24,
+      "y": 0.51,
+      "lat": 42.343327,
+      "lon": -71.116997
+    },
+    {
+      "id": "coolidge_corner",
+      "name": "Coolidge Corner",
+      "x": 0.215,
+      "y": 0.525,
+      "lat": 42.342116,
+      "lon": -71.121263
+    },
+    {
+      "id": "summit_avenue",
+      "name": "Summit Avenue",
+      "x": 0.195,
+      "y": 0.54,
+      "lat": 42.34111,
+      "lon": -71.12561
+    },
+    {
+      "id": "brandon_hall",
+      "name": "Brandon Hall",
+      "x": 0.175,
+      "y": 0.55,
+      "lat": 42.340023,
+      "lon": -71.129082
+    },
+    {
+      "id": "fairbanks_street",
+      "name": "Fairbanks Street",
+      "x": 0.155,
+      "y": 0.56,
+      "lat": 42.339725,
+      "lon": -71.131073
+    },
+    {
+      "id": "washington_square",
+      "name": "Washington Square",
+      "x": 0.135,
+      "y": 0.57,
+      "lat": 42.339394,
+      "lon": -71.13533
+    },
+    {
+      "id": "tappan_street",
+      "name": "Tappan Street",
+      "x": 0.115,
+      "y": 0.58,
+      "lat": 42.338459,
+      "lon": -71.138702
+    },
+    {
+      "id": "dean_road",
+      "name": "Dean Road",
+      "x": 0.1,
+      "y": 0.59,
+      "lat": 42.337807,
+      "lon": -71.141853
+    },
+    {
+      "id": "englewood_avenue",
+      "name": "Englewood Avenue",
+      "x": 0.09,
+      "y": 0.6,
+      "lat": 42.337104,
+      "lon": -71.144852
+    },
+    {
+      "id": "cleveland_circle",
+      "name": "Cleveland Circle",
+      "x": 0.08,
+      "y": 0.61,
+      "lat": 42.336142,
+      "lon": -71.149326
+    },
+    {
+      "id": "fenway",
+      "name": "Fenway",
+      "x": 0.33,
+      "y": 0.5,
+      "lat": 42.345403,
+      "lon": -71.104213
+    },
+    {
+      "id": "longwood",
+      "name": "Longwood",
+      "x": 0.315,
+      "y": 0.54,
+      "lat": 42.341702,
+      "lon": -71.109956
+    },
+    {
+      "id": "brookline_village",
+      "name": "Brookline Village",
+      "x": 0.29,
+      "y": 0.57,
+      "lat": 42.332608,
+      "lon": -71.116857
+    },
+    {
+      "id": "brookline_hills",
+      "name": "Brookline Hills",
+      "x": 0.26,
+      "y": 0.6,
+      "lat": 42.331316,
+      "lon": -71.126683
+    },
+    {
+      "id": "beaconsfield",
+      "name": "Beaconsfield",
+      "x": 0.23,
+      "y": 0.62,
+      "lat": 42.335765,
+      "lon": -71.140455
+    },
+    {
+      "id": "reservoir",
+      "name": "Reservoir",
+      "x": 0.19,
+      "y": 0.635,
+      "lat": 42.335088,
+      "lon": -71.148758
+    },
+    {
+      "id": "chestnut_hill",
+      "name": "Chestnut Hill",
+      "x": 0.15,
+      "y": 0.645,
+      "lat": 42.326753,
+      "lon": -71.164699
+    },
+    {
+      "id": "newton_centre",
+      "name": "Newton Centre",
+      "x": 0.1,
+      "y": 0.645,
+      "lat": 42.329443,
+      "lon": -71.192414
+    },
+    {
+      "id": "newton_highlands",
+      "name": "Newton Highlands",
+      "x": 0.07,
+      "y": 0.63,
+      "lat": 42.322381,
+      "lon": -71.205509
+    },
+    {
+      "id": "eliot",
+      "name": "Eliot",
+      "x": 0.055,
+      "y": 0.6,
+      "lat": 42.319045,
+      "lon": -71.216684
+    },
+    {
+      "id": "waban",
+      "name": "Waban",
+      "x": 0.04,
+      "y": 0.57,
+      "lat": 42.325845,
+      "lon": -71.230609
+    },
+    {
+      "id": "woodland",
+      "name": "Woodland",
+      "x": 0.03,
+      "y": 0.54,
+      "lat": 42.332902,
+      "lon": -71.243362
+    },
+    {
+      "id": "riverside",
+      "name": "Riverside",
+      "x": 0.02,
+      "y": 0.51,
+      "lat": 42.337352,
+      "lon": -71.252685
+    },
+    {
+      "id": "prudential",
+      "name": "Prudential",
+      "x": 0.425,
+      "y": 0.43,
+      "lat": 42.34557,
+      "lon": -71.081696
+    },
+    {
+      "id": "symphony",
+      "name": "Symphony",
+      "x": 0.445,
+      "y": 0.455,
+      "lat": 42.342687,
+      "lon": -71.085056
+    },
+    {
+      "id": "northeastern_university",
+      "name": "Northeastern University",
+      "x": 0.455,
+      "y": 0.485,
+      "lat": 42.340401,
+      "lon": -71.088806
+    },
+    {
+      "id": "museum_of_fine_arts",
+      "name": "Museum of Fine Arts",
+      "x": 0.455,
+      "y": 0.515,
+      "lat": 42.337711,
+      "lon": -71.095512
+    },
+    {
+      "id": "longwood_medical_area",
+      "name": "Longwood Medical Area",
+      "x": 0.455,
+      "y": 0.545,
+      "lat": 42.33596,
+      "lon": -71.100052
+    },
+    {
+      "id": "brigham_circle",
+      "name": "Brigham Circle",
+      "x": 0.445,
+      "y": 0.575,
+      "lat": 42.334229,
+      "lon": -71.104609
+    },
+    {
+      "id": "fenwood_road",
+      "name": "Fenwood Road",
+      "x": 0.415,
+      "y": 0.6,
+      "lat": 42.333706,
+      "lon": -71.105728
+    },
+    {
+      "id": "mission_park",
+      "name": "Mission Park",
+      "x": 0.365,
+      "y": 0.615,
+      "lat": 42.333195,
+      "lon": -71.109756
+    },
+    {
+      "id": "riverway",
+      "name": "Riverway",
+      "x": 0.31,
+      "y": 0.625,
+      "lat": 42.331684,
+      "lon": -71.111931
+    },
+    {
+      "id": "back_of_the_hill",
+      "name": "Back of the Hill",
+      "x": 0.24,
+      "y": 0.63,
+      "lat": 42.330139,
+      "lon": -71.111313
+    },
+    {
+      "id": "heath_street",
+      "name": "Heath Street",
+      "x": 0.16,
+      "y": 0.638,
+      "lat": 42.328316,
+      "lon": -71.110252
+    },
+    {
+      "id": "union_square",
+      "name": "Union Square",
+      "x": 0.56,
+      "y": 0.16,
+      "lat": 42.377359,
+      "lon": -71.094761
+    },
+    {
+      "id": "east_somerville",
+      "name": "East Somerville",
+      "x": 0.64,
+      "y": 0.155,
+      "lat": 42.379467,
+      "lon": -71.086625
+    },
+    {
+      "id": "gilman_square",
+      "name": "Gilman Square",
+      "x": 0.65,
+      "y": 0.12,
+      "lat": 42.387928,
+      "lon": -71.096766
+    },
+    {
+      "id": "magoun_square",
+      "name": "Magoun Square",
+      "x": 0.66,
+      "y": 0.085,
+      "lat": 42.393682,
+      "lon": -71.1063879
+    },
+    {
+      "id": "ball_square",
+      "name": "Ball Square",
+      "x": 0.67,
+      "y": 0.05,
+      "lat": 42.399889,
+      "lon": -71.111003
+    },
+    {
+      "id": "medford_tufts",
+      "name": "Medford/Tufts",
+      "x": 0.68,
+      "y": 0.025,
+      "lat": 42.407975,
+      "lon": -71.117044
+    }
+  ],
+  "edges": [
+    {
+      "a": "alewife",
+      "b": "davis",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "porter",
+      "b": "davis",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "porter",
+      "b": "harvard",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "central",
+      "b": "harvard",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "central",
+      "b": "kendall_mit",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "charles_mgh",
+      "b": "kendall_mit",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "charles_mgh",
+      "b": "park_street",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "downtown_crossing",
+      "b": "park_street",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "south_station",
+      "b": "downtown_crossing",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "south_station",
+      "b": "broadway",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "broadway",
+      "b": "andrew",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "jfk_umass",
+      "b": "andrew",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "jfk_umass",
+      "b": "savin_hill",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "savin_hill",
+      "b": "fields_corner",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "fields_corner",
+      "b": "shawmut",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "ashmont",
+      "b": "shawmut",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "jfk_umass",
+      "b": "north_quincy",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "wollaston",
+      "b": "north_quincy",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "wollaston",
+      "b": "quincy_center",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "quincy_center",
+      "b": "quincy_adams",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "quincy_adams",
+      "b": "braintree",
+      "colors": [
+        "red"
+      ]
+    },
+    {
+      "a": "oak_grove",
+      "b": "malden_center",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "wellington",
+      "b": "malden_center",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "wellington",
+      "b": "assembly",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "sullivan_square",
+      "b": "assembly",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "community_college",
+      "b": "sullivan_square",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "north_station",
+      "b": "community_college",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "north_station",
+      "b": "haymarket",
+      "colors": [
+        "green",
+        "orange"
+      ]
+    },
+    {
+      "a": "state",
+      "b": "haymarket",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "downtown_crossing",
+      "b": "state",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "downtown_crossing",
+      "b": "chinatown",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "tufts_medical_center",
+      "b": "chinatown",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "back_bay",
+      "b": "tufts_medical_center",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "back_bay",
+      "b": "massachusetts_avenue",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "ruggles",
+      "b": "massachusetts_avenue",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "roxbury_crossing",
+      "b": "ruggles",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "roxbury_crossing",
+      "b": "jackson_square",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "jackson_square",
+      "b": "stony_brook",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "stony_brook",
+      "b": "green_street",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "green_street",
+      "b": "forest_hills",
+      "colors": [
+        "orange"
+      ]
+    },
+    {
+      "a": "bowdoin",
+      "b": "government_center",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "state",
+      "b": "government_center",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "aquarium",
+      "b": "state",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "aquarium",
+      "b": "maverick",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "airport",
+      "b": "maverick",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "airport",
+      "b": "wood_island",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "wood_island",
+      "b": "orient_heights",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "orient_heights",
+      "b": "suffolk_downs",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "beachmont",
+      "b": "suffolk_downs",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "beachmont",
+      "b": "revere_beach",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "revere_beach",
+      "b": "wonderland",
+      "colors": [
+        "blue"
+      ]
+    },
+    {
+      "a": "hynes_convention_center",
+      "b": "kenmore",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "copley",
+      "b": "hynes_convention_center",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "copley",
+      "b": "arlington",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "boylston",
+      "b": "arlington",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "park_street",
+      "b": "boylston",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "park_street",
+      "b": "government_center",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "haymarket",
+      "b": "government_center",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "north_station",
+      "b": "science_park",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "science_park",
+      "b": "lechmere",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "blandford_street",
+      "b": "kenmore",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "boston_university_east",
+      "b": "blandford_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "boston_university_east",
+      "b": "boston_university_central",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "amory_street",
+      "b": "boston_university_central",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "amory_street",
+      "b": "babcock_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "packards_corner",
+      "b": "babcock_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "packards_corner",
+      "b": "harvard_avenue",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "griggs_street",
+      "b": "harvard_avenue",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "griggs_street",
+      "b": "allston_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "allston_street",
+      "b": "warren_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "washington_street",
+      "b": "warren_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "sutherland_road",
+      "b": "washington_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "chiswick_road",
+      "b": "sutherland_road",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "chiswick_road",
+      "b": "chestnut_hill_avenue",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "south_street",
+      "b": "chestnut_hill_avenue",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "south_street",
+      "b": "boston_college",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "saint_marys_street",
+      "b": "kenmore",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "saint_marys_street",
+      "b": "hawes_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "kent_street",
+      "b": "hawes_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "saint_paul_street",
+      "b": "kent_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "saint_paul_street",
+      "b": "coolidge_corner",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "coolidge_corner",
+      "b": "summit_avenue",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "brandon_hall",
+      "b": "summit_avenue",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "fairbanks_street",
+      "b": "brandon_hall",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "fairbanks_street",
+      "b": "washington_square",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "washington_square",
+      "b": "tappan_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "dean_road",
+      "b": "tappan_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "englewood_avenue",
+      "b": "dean_road",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "englewood_avenue",
+      "b": "cleveland_circle",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "fenway",
+      "b": "kenmore",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "longwood",
+      "b": "fenway",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "longwood",
+      "b": "brookline_village",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "brookline_village",
+      "b": "brookline_hills",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "brookline_hills",
+      "b": "beaconsfield",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "reservoir",
+      "b": "beaconsfield",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "chestnut_hill",
+      "b": "reservoir",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "newton_centre",
+      "b": "chestnut_hill",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "newton_centre",
+      "b": "newton_highlands",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "newton_highlands",
+      "b": "eliot",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "waban",
+      "b": "eliot",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "waban",
+      "b": "woodland",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "woodland",
+      "b": "riverside",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "copley",
+      "b": "prudential",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "symphony",
+      "b": "prudential",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "symphony",
+      "b": "northeastern_university",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "museum_of_fine_arts",
+      "b": "northeastern_university",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "museum_of_fine_arts",
+      "b": "longwood_medical_area",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "brigham_circle",
+      "b": "longwood_medical_area",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "fenwood_road",
+      "b": "brigham_circle",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "fenwood_road",
+      "b": "mission_park",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "riverway",
+      "b": "mission_park",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "riverway",
+      "b": "back_of_the_hill",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "back_of_the_hill",
+      "b": "heath_street",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "union_square",
+      "b": "lechmere",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "east_somerville",
+      "b": "lechmere",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "gilman_square",
+      "b": "east_somerville",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "gilman_square",
+      "b": "magoun_square",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "ball_square",
+      "b": "magoun_square",
+      "colors": [
+        "green"
+      ]
+    },
+    {
+      "a": "medford_tufts",
+      "b": "ball_square",
+      "colors": [
+        "green"
+      ]
+    }
+  ]
+}

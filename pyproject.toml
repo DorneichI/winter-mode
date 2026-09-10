@@ -32,7 +32,8 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-wintermode = ["fonts/*.ttf", "fonts/LICENSE.txt", "web/static/*.html"]
+wintermode = ["fonts/*.ttf", "fonts/LICENSE.txt", "web/static/*.html",
+              "modules/*/*.json"]
 
 [tool.setuptools.dynamic]
 version = { attr = "wintermode.__version__" }
