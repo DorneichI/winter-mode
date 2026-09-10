@@ -30,7 +30,12 @@ log = logging.getLogger(__name__)
 DEFAULT_PORT = 8080
 STATIC_DIR = Path(__file__).parent / "static"
 
-FONT_FILES = {"3270-Regular.ttf", "3270SemiCondensed-Regular.ttf"}
+# a constant name -> path map: user input is looked up, never joined
+# into a filesystem path (keeps py/path-injection taint clean)
+FONT_FILES = {
+    "3270-Regular.ttf": FONTS_DIR / "3270-Regular.ttf",
+    "3270SemiCondensed-Regular.ttf": FONTS_DIR / "3270SemiCondensed-Regular.ttf",
+}
 
 
 def _theme_tokens(theme) -> dict[str, str]:
@@ -96,8 +101,9 @@ class WebServer:
                     return self._send(200, page, "text/html; charset=utf-8")
                 if path.startswith("/font/"):
                     name = path[len("/font/"):]
-                    if name in FONT_FILES:
-                        return self._send(200, (FONTS_DIR / name).read_bytes(),
+                    font_path = FONT_FILES.get(name)
+                    if font_path is not None:
+                        return self._send(200, font_path.read_bytes(),
                                           "font/ttf")
                     return self._send(404, {"error": "unknown font"})
                 if path == "/api/modules":
