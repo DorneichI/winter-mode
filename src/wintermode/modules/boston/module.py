@@ -460,9 +460,13 @@ class TripAlert:
         x0, _y0, x1, y1 = ctx.content
         trip = self._trips[self._index]
         top = self._body_top(ctx)
-        self._row(draw, ctx, top,
-                  f"{fmt_minutes(trip.duration)} · arrive "
-                  f"{fmt_clock(trip.arrive)}", theme.fg)
+        summary = []
+        if trip.depart:
+            summary.append(f"leave {fmt_clock(trip.depart)}")
+        if trip.arrive:
+            summary.append(f"arrive {fmt_clock(trip.arrive)}")
+        summary.append(f"{fmt_minutes(trip.duration)} total")
+        self._row(draw, ctx, top, " · ".join(summary), theme.fg)
         legs_top = top + ROW_H + BODY_MARGIN
         scroller_strip = (x0, y1 - FOOTER_H - SCROLLER_H, x1, y1 - FOOTER_H)
         per_page = max(1, (scroller_strip[1] - legs_top) // ROW_H)
