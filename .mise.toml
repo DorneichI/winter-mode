@@ -1,0 +1,3 @@
+[tools]
+# The one and only supported Python: what Raspberry Pi OS Bookworm ships.
+python = "3.11"

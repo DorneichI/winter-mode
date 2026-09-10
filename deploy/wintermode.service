@@ -1,0 +1,24 @@
+# winter-mode kitchen dashboard (ER-TFTM070-4)
+#
+# Install: copy to /etc/systemd/system/, then
+#   sudo systemctl enable --now wintermode
+# The display turns on at boot; the web UI comes up with the network.
+
+[Unit]
+Description=wintermode kitchen dashboard (ER-TFTM070-4)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# gpiomem/i2c access: the dashboard user must be in the gpio+i2c
+# groups (on Raspberry Pi OS Lite the first user already is)
+User=winter
+WorkingDirectory=/opt/winter-mode
+ExecStart=/opt/winter-mode/.venv/bin/python -m wintermode --config /etc/wintermode/config.json
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

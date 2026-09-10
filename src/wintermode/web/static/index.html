@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WINTER MODE</title>
+<style>
+  /* tokens are seeded from /api/device — same palette as the display */
+  :root {
+    --bg: #000; --fg: #e8e8e8; --accent: #50dc8c; --dim: #6e6e6e;
+    --border: #5f5f5f;
+  }
+  @font-face {
+    font-family: "3270"; src: url("/font/3270-Regular.ttf") format("truetype");
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--bg); color: var(--fg);
+    font-family: "3270", ui-monospace, monospace; font-size: 18px;
+    min-height: 100vh;
+  }
+  header { display: flex; gap: 16px; align-items: baseline;
+           border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+  header h1 { margin: 0; font-size: 26px; letter-spacing: 2px; }
+  header .sub { color: var(--dim); }
+  a, button.back { color: var(--accent); cursor: pointer; text-decoration: none;
+                   background: none; border: none; font: inherit; padding: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+          gap: 12px; margin-top: 20px; }
+  .card { border: 1px solid var(--border); padding: 18px 16px; cursor: pointer;
+          text-transform: uppercase; letter-spacing: 1px; }
+  .card:hover { border-color: var(--accent); color: var(--accent); }
+  .card .hint { display: block; text-transform: none; color: var(--dim);
+                font-size: 14px; margin-top: 6px; }
+  .page { max-width: 640px; margin-top: 20px; }
+  h2 { font-size: 22px; letter-spacing: 2px; margin: 16px 0 12px; }
+  h3 { font-size: 18px; letter-spacing: 1px; color: var(--accent);
+       margin: 24px 0 4px; text-transform: uppercase; }
+  .field { display: flex; align-items: center; gap: 16px;
+           border-bottom: 1px solid var(--border); padding: 12px 4px; }
+  .field label { flex: 1; color: var(--dim); text-transform: uppercase; }
+  .field input[type=text] { flex: 1.4; }
+  .field input, .field select {
+    background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); padding: 6px 8px; font: inherit; }
+  .field input:focus, .field select:focus { outline-color: var(--accent); }
+  .field input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
+  .field.hidden { display: none; }
+  .actions { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .actions button {
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+    font: inherit; padding: 8px 16px; cursor: pointer; text-transform: uppercase; }
+  .actions button:hover { border-color: var(--accent); color: var(--accent); }
+  .info { color: var(--dim); margin-top: 20px; line-height: 1.6; }
+  #error { color: var(--accent); margin-top: 16px; min-height: 1em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>WINTER MODE</h1>
+  <span class="sub" id="subtitle">—</span>
+</header>
+<main id="main"></main>
+<div id="error"></div>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const main = $("#main");
+
+/* every value that reaches the page came from a config file or a form
+   field, so it is escaped on the way into HTML — a greeting of
+   x" onmouseover="..." must stay text, not become markup */
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[ch]);
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.status);
+  return data;
+}
+
+async function loadDevice() {
+  const device = await api("/api/device");
+  for (const [name, value] of Object.entries(device.tokens)) {
+    document.documentElement.style.setProperty(`--${name}`, value);
+  }
+  return device;
+}
+
+/* the generic form renderer — same schema the touch UI gets */
+function formHTML(schema, values, submit) {
+  return Object.entries(schema).map(([key, spec]) => {
+    const cond = spec.visible_if;
+    const hidden = cond && values[cond.field] !== cond.equals;
+    let control = "";
+    if (spec.type === "bool") {
+      control = `<input type="checkbox" data-key="${esc(key)}"` +
+        `${values[key] ? " checked" : ""}>`;
+    } else if (spec.type === "choice") {
+      control = `<select data-key="${esc(key)}">` +
+        (spec.options ?? []).map((o) =>
+          `<option${o === values[key] ? " selected" : ""}>${esc(o)}</option>`
+        ).join("") + `</select>`;
+    } else if (spec.type === "int") {
+      control = `<input type="number" data-key="${esc(key)}"` +
+        ` min="${esc(spec.min ?? "")}" max="${esc(spec.max ?? "")}"` +
+        ` value="${esc(values[key] ?? spec.default ?? "")}">`;
+    } else if (spec.type === "time") {
+      control = `<input type="time" data-key="${esc(key)}"` +
+        ` value="${esc(values[key] ?? spec.default ?? "07:00")}">`;
+    } else {
+      control = `<input type="text" data-key="${esc(key)}"` +
+        ` maxlength="${esc(spec.maxlength ?? 64)}"` +
+        ` value="${esc(values[key] ?? "")}">`;
+    }
+    return `<div class="field${hidden ? " hidden" : ""}"` +
+      ` data-field="${esc(key)}">` +
+      `<label>${esc(spec.title ?? key)}</label>${control}</div>`;
+  }).join("") + `<div class="actions"><button type="submit">save</button></div>`;
+}
+
+async function bindForm(container, schema, values, putPath) {
+  let current = values;
+  const html = `<form class="page">${formHTML(schema, current)}</form>`;
+  container.innerHTML = html;
+  const form = container.querySelector("form");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {};
+    for (const control of form.querySelectorAll("[data-key]")) {
+      const key = control.dataset.key;
+      body[key] = control.type === "checkbox" ? control.checked
+        : control.type === "number" ? Number(control.value) : control.value;
+    }
+    try {
+      const out = await api(putPath, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      current = { ...current, ...body };
+      if (putPath.startsWith("/api/device")) {
+        await loadDevice();  // re-theme this page too
+        showSettings();
+      } else {
+        current = out.values ?? current;
+        await bindForm(container, schema, current, putPath);
+      }
+    } catch (err) { showError(err.message); }
+  });
+  // visible_if reacts to changes before saving
+  form.addEventListener("change", (e) => {
+    const key = e.target.dataset.key;
+    const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    current[key] = value;
+    for (const row of form.querySelectorAll("[data-field]")) {
+      const spec = schema[row.dataset.field];
+      if (spec?.visible_if) {
+        row.classList.toggle("hidden",
+          current[spec.visible_if.field] !== spec.visible_if.equals);
+      }
+    }
+  });
+}
+
+async function showHome() {
+  const [device, modules] = await Promise.all([loadDevice(), api("/api/modules")]);
+  $("#subtitle").textContent =
+    `v${device.version} — ${device.network.web_url}`;
+  // the SETTINGS card opens the device settings (display, status bar);
+  // every other module card opens that module's own config page
+  main.innerHTML = `<div class="grid">` +
+    modules.map((m) =>
+      `<div class="card" data-module="${esc(m.id)}">${esc(m.title)}` +
+      `<span class="hint">${m.id === "settings"
+        ? esc(device.groups.map((g) => g.title.toLowerCase()).join(", "))
+        : esc(m.actions.length ? m.actions.length + " action(s)" : "configure")}` +
+      `</span></div>`)
+      .join("") + `</div>`;
+  main.querySelectorAll(".card").forEach((card) => {
+    card.addEventListener("click", () => {
+      card.dataset.module === "settings"
+        ? showSettings()
+        : showModule(card.dataset.module);
+    });
+  });
+}
+
+function pageShell(title) {
+  main.innerHTML = `<div class="page">` +
+    `<p><a class="back" href="#">‹ back</a></p>` +
+    `<h2>${esc(title)}</h2></div>`;
+  main.querySelector("a.back").addEventListener("click", (e) => {
+    e.preventDefault(); showHome();
+  });
+}
+
+async function showModule(id) {
+  const data = await api(`/api/modules/${encodeURIComponent(id)}/config`);
+  const module = (await api("/api/modules")).find((m) => m.id === id);
+  pageShell(module ? module.title : id);
+  const container = document.createElement("div");
+  main.appendChild(container);
+  if (Object.keys(data.schema).length === 0) {
+    container.innerHTML = `<div class="info">no configurable fields</div>`;
+  } else {
+    await bindForm(container, data.schema, data.values,
+                   `/api/modules/${encodeURIComponent(id)}/config`);
+  }
+  if (module.actions.length) {
+    const box = document.createElement("div");
+    box.className = "actions";
+    box.innerHTML = module.actions.map((a) =>
+      `<button data-action="${esc(a.id)}">${esc(a.title)}</button>`).join("");
+    box.querySelectorAll("button").forEach((b) => b.addEventListener("click", async () => {
+      try { await api(`/api/modules/${encodeURIComponent(id)}/actions/` +
+                      `${encodeURIComponent(b.dataset.action)}`,
+                      { method: "POST" }); }
+      catch (err) { showError(err.message); }
+    }));
+    main.appendChild(box);
+  }
+}
+
+/* SETTINGS is the device settings: the groups GET /api/device serves,
+   which is exactly what the panel's SETTINGS page shows */
+async function showSettings() {
+  const device = await loadDevice();
+  $("#subtitle").textContent = `v${device.version} — ${device.network.web_url}`;
+  pageShell("SETTINGS");
+  for (const group of device.groups) {
+    const heading = document.createElement("h3");
+    heading.textContent = group.title;
+    main.appendChild(heading);
+    const container = document.createElement("div");
+    main.appendChild(container);
+    await bindForm(container, group.schema, group.values,
+                   `/api/device/${encodeURIComponent(group.id)}`);
+  }
+  main.insertAdjacentHTML("beforeend", `<div class="info">` +
+    `host: ${esc(device.network.hostname)} · ip: ${esc(device.network.ipv4)}` +
+    `</div>`);
+}
+
+function showError(message) {
+  $("#error").textContent = `error: ${String(message).slice(0, 200)}`;
+}
+
+showHome().catch((err) => showError(err.message));
+</script>
+</body>
+</html>
