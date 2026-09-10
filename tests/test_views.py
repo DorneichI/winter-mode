@@ -257,3 +257,130 @@ def test_form_hides_conditional_fields(theme, fonts, ctx):
     # the value survives hidden periods — it is never deleted
     assert values["light_from"] == "07:00"
     assert writes == [("theme", "auto")]
+
+
+def test_a_shrunken_page_clamps_before_slicing(theme, fonts, ctx):
+    # the page index used to be clamped AFTER paginate() had sliced: a
+    # collection that shrank under a stale page drew an empty frame
+    from wintermode.views import _paged
+
+    items = [1, 2, 3]
+    pages, page, shown = _paged(items, 5, 10)
+    assert (pages, page) == (1, 0)
+    assert shown == items
+
+
+def test_stale_page_renders_content_not_blank(theme, fonts, ctx, config):
+
+    c = ctx(registry=None)
+    view = FormView("T", SCHEMA, lambda: {}, lambda key, value: None)
+    view.page = 3  # as if fields vanished while sitting on a later page
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    assert view.page == 0
+    assert view._rows  # a stale index must not draw an empty page
+    # every interactive field is on the page (the text row is read-only)
+    assert {key for _rect, key, _action in view._rows} == {
+        "flag", "mode", "count"}
+
+
+def test_list_view_is_a_reusable_primitive(theme, fonts, ctx):
+    from wintermode.views import ListView, Row
+
+    rows = [Row("a", "Alpha", value=1, kind="int",
+                spec={"min": 0, "max": 3}),
+            Row("b", "Bravo", value="hi", kind="info")]
+    writes = []
+    view = ListView("DEMO", rows, on_change=lambda row, value, c:
+                    writes.append((row.key, value)))
+    c = ctx(registry=None)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    actions = {action for _r, _k, action in view._rows}
+    assert actions == {"minus", "plus"}
+    assert view.on_tap(759, 100, c) is False  # info row is inert
+    plus = next(r for r, k, a in view._rows if a == "plus")
+    assert view.on_tap((plus[0] + plus[2]) // 2, (plus[1] + plus[3]) // 2,
+                       c) is True
+    assert writes == [("a", 2)]
+    assert view.title == "DEMO"
+
+
+def test_picker_picks_and_pops(theme, fonts, ctx):
+    from wintermode.views import PickerView
+
+    c = ctx(registry=None)
+    picked = []
+    picker = PickerView("THEME", ["dark", "light"], lambda value, cc:
+                        picked.append(value), current="dark")
+    c.nav.push(picker)
+    canvas, draw = make_canvas(theme)
+    picker.render(draw, c)
+    assert {key for _r, key, _a in picker._rows} == {"light"}  # current hidden
+    rect = picker._rows[0][0]
+    assert picker.on_tap((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2,
+                         c) is True
+    assert picked == ["light"]
+    assert len(c.nav) == 1  # it popped itself
+
+
+def test_picker_accepts_value_label_pairs(theme, fonts, ctx):
+    from wintermode.views import PickerView
+
+    c = ctx(registry=None)
+    picker = PickerView("SIZE", [(26, "small"), (44, "large")],
+                        lambda value, cc: None)
+    canvas, draw = make_canvas(theme)
+    picker.render(draw, c)
+    assert {key for _r, key, _a in picker._rows} == {"26", "44"}
+    assert picker._pick["44"] == 44
+
+
+def test_confirm_view_confirms_and_pops(theme, fonts, ctx):
+    from wintermode.views import ConfirmView
+
+    c = ctx(registry=None)
+    confirmed = []
+    dialog = ConfirmView("RESET", "clear the counter?", lambda cc:
+                         confirmed.append(True))
+    c.nav.push(dialog)
+    canvas, draw = make_canvas(theme)
+    dialog.render(draw, c)
+    assert {action for _r, _k, action in dialog._rows} == {"select"}
+    no = next(r for r, k, _a in dialog._rows if k == "no")
+    assert dialog.on_tap((no[0] + no[2]) // 2, (no[1] + no[3]) // 2, c) is True
+    assert confirmed == []  # cancel does not confirm
+    assert len(c.nav) == 1
+
+
+def test_the_stepper_value_and_buttons_share_a_centre(theme, fonts, ctx):
+    """The reported bug: "60" sat at the top of the boxes, not centered.
+
+    Every glyph in a row is centered on the row band by one rule, so the
+    value, the -/+ buttons and the label line up optically.
+    """
+
+    c = ctx(registry=None)
+    view = FormView("T", {"count": {"type": "int", "title": "Count",
+                                    "min": 0, "max": 99, "default": 60}},
+                    lambda: {"count": 60}, lambda key, value: None)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+
+    minus = next(r for r, k, a in view._rows if a == "minus")
+    plus = next(r for r, k, a in view._rows if a == "plus")
+    y0, y1 = minus[1], minus[3]
+    band_centre = (y0 + y1) / 2
+
+    def ink_centre(x_range):
+        rows = range(y0 + 1, y1 - 1)  # inside the 1px border
+        ys = [y for y in rows
+              if any(canvas.getpixel((x, y)) != c.theme.bg for x in x_range)]
+        return (min(ys) + max(ys)) / 2
+
+    for label, x_range in (
+        ("-", range(minus[0] + 4, minus[2] - 4)),
+        ("+", range(plus[0] + 4, plus[2] - 4)),
+        ("value", range(minus[2] + 2, plus[0] - 2)),
+    ):
+        assert abs(ink_centre(x_range) - band_centre) <= 2.5, label

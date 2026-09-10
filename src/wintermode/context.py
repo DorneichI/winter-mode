@@ -68,3 +68,4 @@ class Ctx:
     wall: float = 0.0  # wall-clock seconds, for display/formatting
     config: Any = None  # the Config instance
     registry: Any = None  # the module registry
+    web_port: int | None = None  # the port the web UI bound, if it is up

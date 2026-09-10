@@ -109,3 +109,47 @@ def test_visible_if_conditions():
     assert visible(spec, {"theme": "dark"}) is False
     assert visible(spec, {}) is False  # field missing -> not shown
     assert visible({"type": "time"}, {"theme": "auto"}) is True  # no condition
+
+
+def test_absent_keys_use_defaults_without_warning(caplog):
+    import logging
+
+    from wintermode import schema
+
+    spec = {"flag": {"type": "bool", "default": True},
+            "count": {"type": "int", "min": 0, "max": 5, "default": 2}}
+    with caplog.at_level(logging.WARNING):
+        assert schema.validate(spec, {}) == {"flag": True, "count": 2}
+    assert caplog.records == []  # an absent key is not a rejection
+
+
+def test_a_present_bad_value_still_warns(caplog):
+    import logging
+
+    from wintermode import schema
+
+    with caplog.at_level(logging.WARNING):
+        assert schema.validate({"count": {"type": "int", "default": 2}},
+                               {"count": "lots"}) == {"count": 2}
+    assert len(caplog.records) == 1
+
+
+def test_steppers_survive_a_spec_with_no_default():
+    # a spec without a default stores None; tapping its stepper used to
+    # raise TypeError/AttributeError straight out of the main loop
+    from wintermode import schema
+
+    assert schema.step_int({"type": "int", "min": 1, "max": 5}, None, 1) == 2
+    assert schema.step_time(None, "minute", 1) == "00:05"
+    assert schema.step_time("nonsense", "hour", 1) == "01:00"
+    assert schema.cycle_choice({"type": "choice"}, "x") == "x"
+
+
+def test_coerce_bool_reads_strings_the_way_the_schema_does():
+    from wintermode import schema
+
+    assert schema.coerce_bool("false") is False
+    assert schema.coerce_bool("no") is False
+    assert schema.coerce_bool("0") is False
+    assert schema.coerce_bool("true") is True
+    assert schema.coerce_bool(None) is True  # default for junk

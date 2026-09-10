@@ -1,9 +1,12 @@
 """The settings hub: a card grid into every configurable thing.
 
-Device-level cards (theme + auto schedule, status bar + rotation,
-display, system info) plus one card per module with a config_schema —
-all auto-generated FormViews or read-only InfoViews.  Tap a card,
-edit, [‹ BACK] out.
+Device-level cards (DISPLAY, STATUS BAR, SYSTEM) plus one card per
+module with a config_schema — all auto-generated FormViews or read-only
+InfoViews.  Tap a card, edit, [‹ BACK] out.
+
+The device cards are built from `wintermode.device`, the same
+descriptors the web API serves, so the two surfaces always show the same
+groups with the same schemas.
 """
 
 from __future__ import annotations
@@ -11,17 +14,13 @@ from __future__ import annotations
 import socket
 import time
 
-from wintermode import __version__
-from wintermode.config import DISPLAY_PAGE_SCHEMA
+from wintermode import __version__, device
 from wintermode.context import Ctx
 from wintermode.net import ipv4 as _ipv4
+from wintermode.net import web_url
 from wintermode.views import CardGrid, FormView, InfoView
 
 START = time.time()
-
-
-def _web_url() -> str:
-    return f"http://{_ipv4()}:8080"
 
 
 def _uptime() -> str:
@@ -34,82 +33,57 @@ class Settings(CardGrid):
     title = "SETTINGS"
     interval = 0
     config_schema = None
+    status_bar = False  # nothing of the hub's belongs in the status bar
     actions: list = []
 
     def __init__(self) -> None:
         super().__init__()
-        self._views: dict[str, object] = {}
+        # two namespaces: a module whose id matches a device page name
+        # must still get its own form, not the device view
+        self._device_views: dict[str, object] = {}
+        self._module_views: dict[str, object] = {}
+        self._web_port: int | None = None
 
     # --- hub cards ----------------------------------------------------------
 
     def cards(self, ctx: Ctx) -> list[tuple[str, object]]:
-        if not self._views:
-            self._build_views(ctx)
+        self._web_port = ctx.web_port  # refreshed every render
         cards: list[tuple[str, object]] = [
-            ("DISPLAY", self._views["display"]),
-            ("STATUS BAR", self._views["statusbar"]),
-            ("SYSTEM", self._views["system"]),
+            (group.title, self._device_view(group, ctx))
+            for group in device.groups(ctx.config, ctx.registry)
         ]
+        cards.append(("SYSTEM", self._system_view(ctx)))
         for module in ctx.registry.home_order():
             if module.id != self.id and module.config_schema:
                 cards.append((module.title, self._module_view(module, ctx)))
         return cards
 
-    def _build_views(self, ctx: Ctx) -> None:
-        config = ctx.config  # one Config for the process lifetime
+    def _device_view(self, group, ctx: Ctx) -> FormView:
+        """One form per device group, built from its shared descriptor."""
+        if group.id not in self._device_views:
+            self._device_views[group.id] = FormView(
+                group.title, group.schema, group.read,
+                # every write goes back through the group's validator,
+                # so the panel and the web API save identical values
+                lambda key, value, g=group: g.apply({key: value}),
+            )
+        return self._device_views[group.id]
 
-        def statusbar_ids():
-            return [m.id for m in ctx.registry.home_order() if m.id != self.id]
-
-        def statusbar_schema():
-            schema = {
-                mid: {"type": "bool",
-                      "title": ctx.registry.get(mid).title + " bar",
-                      "default": True}
-                for mid in statusbar_ids()
-            }
-            schema["rotate_seconds"] = {
-                "type": "int", "title": "Rotate every (s)",
-                "min": 0, "max": 3600, "default": 10,
-            }
-            return schema
-
-        self._views = {
-            "display": FormView(
-                "DISPLAY", DISPLAY_PAGE_SCHEMA,
-                lambda: {
-                    key: config.data["theme"] if key == "theme"
-                    else config.data["display"].get(key)
-                    for key in DISPLAY_PAGE_SCHEMA
-                },
-                lambda key, value: config.update(
-                    {"theme": value} if key == "theme"
-                    else {"display": {key: value}}),
-            ),
-            "statusbar": FormView(
-                "STATUS BAR", statusbar_schema(),
-                lambda: {
-                    key: config.data["statusbar_rotate"] if key == "rotate_seconds"
-                    else config.data["statusbar"].get(key, True)
-                    for key in statusbar_schema()
-                },
-                lambda key, value: config.update(
-                    {"statusbar_rotate": value} if key == "rotate_seconds"
-                    else {"statusbar": {key: value}}),
-            ),
-            "system": InfoView("SYSTEM", [
+    def _system_view(self, ctx: Ctx) -> InfoView:
+        if "system" not in self._device_views:
+            self._device_views["system"] = InfoView("SYSTEM", [
                 ("HOST", lambda: socket.gethostname()),
                 ("VERSION", lambda: __version__),
                 ("UPTIME", _uptime),
                 ("IP", _ipv4),
-                ("WEB", _web_url),
-            ]),
-        }
+                ("WEB", lambda: web_url(self._web_port)),
+            ])
+        return self._device_views["system"]
 
     def _module_view(self, module, ctx: Ctx) -> FormView:
-        if module.id not in self._views:
+        if module.id not in self._module_views:
             config = ctx.config
-            self._views[module.id] = FormView(
+            self._module_views[module.id] = FormView(
                 module.title, module.config_schema,
                 lambda m=module: {
                     key: config.data.get(m.id, {}).get(key)
@@ -118,7 +92,7 @@ class Settings(CardGrid):
                 lambda key, value, m=module: config.update_module(
                     m.id, {key: value}),
             )
-        return self._views[module.id]
+        return self._module_views[module.id]
 
     # --- protocol -----------------------------------------------------------
 

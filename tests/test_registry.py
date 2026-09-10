@@ -3,7 +3,7 @@
 from wintermode.registry import Registry, discover
 
 MODULE_SOURCE = '''
-class MODULE:
+class _Impl:
     id = "{name}"
     title = "{name}".upper()
     interval = 0
@@ -21,6 +21,9 @@ class MODULE:
 
     def on_action(self, action_id, ctx):
         pass
+
+
+MODULE = _Impl()  # an instance: a class does not speak the protocol
 '''
 
 
@@ -57,6 +60,19 @@ def test_discovery_survives_broken_imports(tmp_path, caplog):
     (module_dir / "module.py").write_text("raise RuntimeError('boom')")
     write_module(tmp_path, "fine")
     assert [m.id for m in discover(tmp_path)] == ["fine"]
+
+
+def test_discovery_rejects_a_bare_class(tmp_path, caplog):
+    # `MODULE = MyClock` with the parens forgotten used to pass discovery
+    # and then die on the first draw: every method was called unbound
+    write_module(tmp_path, "unwrapped",
+                 MODULE_SOURCE.replace("MODULE = _Impl()", "MODULE = _Impl"))
+    assert discover(tmp_path) == []
+
+
+def test_discovery_accepts_an_instance(tmp_path):
+    write_module(tmp_path, "wrapped")
+    assert [m.id for m in discover(tmp_path)] == ["wrapped"]
 
 
 def test_registry_order_comes_from_config(config, fake_module):

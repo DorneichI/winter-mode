@@ -33,7 +33,9 @@ class Clock:
         seconds = ctx.config.data["clock"]["show_seconds"]
         fmt = "%H:%M:%S" if seconds else "%H:%M"
         if not fmt24:
-            fmt = fmt.replace("%H", "%I")
+            # %I alone is a 12-hour clock with no way to tell 01:30 from
+            # 13:30 — the meridiem is not optional
+            fmt = fmt.replace("%H", "%I") + " %p"
         return time.strftime(fmt, time.localtime(ctx.wall))
 
     def render(self, draw, ctx: Ctx) -> bool:

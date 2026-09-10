@@ -45,18 +45,21 @@ the Zero.
 
 ## What it is
 
-- **Boot splash** — WINTER MODE steps through the verified crisp font
-  sizes (26 → 44 → 88 → 132), holds, cuts to black for a beat, then in.
+- **Boot splash** — WINTER MODE steps up the verified crisp font sizes
+  (26 → 44 → 88 — the landing step is the largest clean-size multiple
+  that fits the panel), holds, cuts to black for a beat, then in.
 - **The bar** — always on top: clock, rotating status items published
   by modules, view title, `[‹ BACK]` `[⌂ HOME]`. Navigation is taps
   only. No gestures, no scrolling: lists and grids paginate.
 - **Modules** — CLOCK (big ticking time), DUMMY (tap-to-bump counter,
   a web "Reset" action, a config schema demoing every DSL type), and
   SETTINGS (the hub).
-- **Settings** — a card grid into every configurable thing: theme
-  (dark/light/auto with a light-window schedule), status bar (per-module
-  toggles + rotation interval), display (always-on vs wake-on-touch),
-  system info, and an auto-generated form page per module.
+- **Settings** — a card grid into every configurable thing: DISPLAY
+  (theme dark/light/auto with the light-window schedule, always-on vs
+  wake-on-touch), STATUS BAR (a toggle per module that publishes status
+  items, plus the rotation interval), SYSTEM (info), and an
+  auto-generated form page per module. These are the same groups the
+  web UI shows under SETTINGS — one definition, two surfaces.
 - **Themes** — design tokens only (`bg/fg/accent/dim/border`); every
   pixel comes from a theme. `auto` flips light/dark on the schedule.
 - **Wake on touch** — after `idle_seconds` the panel really sleeps

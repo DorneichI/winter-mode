@@ -85,8 +85,10 @@ def _coerce_statusbar(value: Any) -> dict[str, bool]:
     if not isinstance(value, dict):
         log.warning("config: 'statusbar' must be an object, using defaults")
         return {}
+    # through the schema, so "false"/"no"/"0" from a hand-edit mean off
     return {
-        key: bool(enabled) for key, enabled in value.items() if isinstance(key, str)
+        key: schema.coerce_bool(enabled)
+        for key, enabled in value.items() if isinstance(key, str)
     }
 
 
@@ -95,28 +97,44 @@ class Config:
         self.path = Path(path)
         self._lock = threading.Lock()
         self.generation = 0
+        self._healed = False  # the file needed repair while loading
         self.data: dict[str, Any] = self._load()
         if not self.path.exists():
             log.info("config: no %s, writing defaults", self.path)
+            self.save()
+        elif self._healed:
+            # healing in memory only would be re-applied on every boot;
+            # write the repaired file so the repair sticks
+            log.info("config: rewriting %s with healed values", self.path)
             self.save()
 
     # --- loading -----------------------------------------------------------
 
     def _load(self) -> dict[str, Any]:
         data = deepcopy(DEFAULTS)
+        raw: Any = {}
         if self.path.exists():
             try:
                 raw = json.loads(self.path.read_text())
             except (OSError, ValueError):
                 log.warning("config: unreadable %s, using defaults", self.path)
+                self._healed = True
                 raw = {}
-            if isinstance(raw, dict):
-                _deep_update(data, raw)
+            if not isinstance(raw, dict):
+                log.warning("config: %s is not an object, using defaults",
+                            self.path)
+                self._healed = True
+                raw = {}
+            _deep_update(data, raw)
         data.update(schema.validate(THEME_SCHEMA, data))
         data.update(schema.validate(ROTATE_SCHEMA, data))
         data["display"] = schema.validate(DISPLAY_SCHEMA, data.get("display"))
         data["modules"] = _coerce_modules(data.get("modules"))
         data["statusbar"] = _coerce_statusbar(data.get("statusbar"))
+        # a key the file DID set but the schema had to change is a
+        # repair; merely filling in absent keys is not
+        if any(data.get(key) != value for key, value in raw.items()):
+            self._healed = True
         return data
 
     # --- writing -----------------------------------------------------------
@@ -134,15 +152,29 @@ class Config:
 
     # --- mutation ----------------------------------------------------------
 
-    def update(self, mapping: dict[str, Any], save: bool = True) -> None:
+    def update(self, mapping: dict[str, Any]) -> None:
         """Deep-merge top-level namespaces (e.g. {"theme": "night"})."""
         with self._lock:
             _deep_update(self.data, mapping)
-        if save:
-            self.save()
+        self.save()
 
-    def update_module(self, module_id: str, values: dict, save: bool = True) -> None:
+    def update_module(self, module_id: str, values: dict,
+                      spec: dict | None = None) -> dict:
+        """Merge `values` into a module namespace, saved and generation-bumped.
+
+        Pass `spec` (the module's own config_schema) and the merged
+        namespace is validated first.  Without it a write can persist a
+        value the schema forbids, which the next boot silently clamps —
+        and a clamped counter then steps the wrong way at its bound.
+        Returns the values actually stored.
+        """
         with self._lock:
-            _deep_update(self.data.setdefault(module_id, {}), values)
-        if save:
-            self.save()
+            namespace = self.data.setdefault(module_id, {})
+            if not isinstance(namespace, dict):
+                namespace = self.data[module_id] = {}
+            merged = {**namespace, **values}
+            if spec:
+                merged = schema.validate(spec, merged)
+            _deep_update(namespace, merged)
+        self.save()
+        return merged

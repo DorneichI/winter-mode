@@ -19,16 +19,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from wintermode import __version__, schema
-from wintermode.config import DISPLAY_PAGE_SCHEMA
+from wintermode import __version__, device, schema
 from wintermode.fonts import FONTS_DIR
-from wintermode.net import ipv4
+from wintermode.net import DEFAULT_WEB_PORT, ipv4, web_url
 from wintermode.theme import effective_theme
 
 log = logging.getLogger(__name__)
 
-DEFAULT_PORT = 8080
+DEFAULT_PORT = DEFAULT_WEB_PORT
 STATIC_DIR = Path(__file__).parent / "static"
+MAX_BODY = 64 * 1024  # nothing this UI sends is bigger; cap the read
 
 # a constant name -> path map: user input is looked up, never joined
 # into a filesystem path (keeps py/path-injection taint clean)
@@ -77,9 +77,14 @@ class WebServer:
                 self.wfile.write(body)
 
             def _json_body(self):
-                length = int(self.headers.get("Content-Length") or 0)
+                try:
+                    length = int(self.headers.get("Content-Length") or 0)
+                except ValueError:
+                    return None
                 if not length:
                     return {}
+                if length > MAX_BODY:
+                    return None
                 try:
                     data = json.loads(self.rfile.read(length))
                 except ValueError:
@@ -140,11 +145,17 @@ class WebServer:
                         return
                     try:
                         schema.validate_strict(module.config_schema or {}, body)
-                        merged = {**config.data.get(module.id, {}), **body}
+                        current = config.data.get(module.id, {})
+                        if not isinstance(current, dict):
+                            current = {}
                         valid = schema.validate(module.config_schema or {},
-                                                merged)
+                                                {**current, **body})
                     except ValueError as error:
                         return self._send(400, {"error": str(error)})
+                    except (TypeError, KeyError) as error:
+                        # null for an int, a choice spec with no options:
+                        # the body is bad, the handler must still answer
+                        return self._send(400, {"error": f"invalid value: {error}"})
                     config.update_module(module.id, valid)
                     return self._send(200, {"values": valid})
                 group = self._split(path, "/api/device/", 1)
@@ -177,77 +188,35 @@ class WebServer:
 
             def _device_payload(self) -> dict:
                 theme = effective_theme(config, time.time())
+                ip = ipv4()  # one UDP socket for the whole payload
                 return {
                     "theme": {"name": theme.name},
                     "tokens": _theme_tokens(theme),
                     "network": {
                         "hostname": socket.gethostname(),
-                        "ipv4": ipv4(),
-                        "web_url": f"http://{ipv4()}:{port}",
+                        "ipv4": ip,
+                        "web_url": web_url(port),
                     },
                     "version": __version__,
                     "groups": [
-                        {"id": "display", "title": "DISPLAY",
-                         "schema": DISPLAY_PAGE_SCHEMA,
-                         "values": self._display_values()},
-                        {"id": "statusbar", "title": "STATUS BAR",
-                         "schema": self._statusbar_schema(),
-                         "values": self._statusbar_values()},
+                        {"id": group.id, "title": group.title,
+                         "schema": group.schema, "values": group.read()}
+                        for group in device.groups(config, registry)
                     ],
                 }
 
-            def _display_values(self) -> dict:
-                return {"theme": config.data["theme"],
-                        **config.data.get("display", {})}
-
-            def _statusbar_schema(self) -> dict:
-                schema = {
-                    module.id: {"type": "bool",
-                                "title": module.title + " bar",
-                                "default": True}
-                    for module in registry.home_order()
-                }
-                schema["rotate_seconds"] = {
-                    "type": "int", "title": "Rotate every (s)",
-                    "min": 0, "max": 3600, "default": 10,
-                }
-                return schema
-
-            def _statusbar_values(self) -> dict:
-                values = {
-                    module.id: config.data["statusbar"].get(module.id, True)
-                    for module in registry.home_order()
-                }
-                values["rotate_seconds"] = config.data["statusbar_rotate"]
-                return values
-
-            def _put_device(self, group: str, body: dict) -> None:
+            def _put_device(self, group_id: str, body: dict) -> None:
+                group = device.group_by_id(config, registry, group_id)
+                if group is None:
+                    return self._send(404, {"error": "not found"})
                 try:
-                    if group == "display":
-                        schema.validate_strict(DISPLAY_PAGE_SCHEMA, body)
-                        display_keys = [key for key in body
-                                        if key != "theme"]
-                        config.update({
-                            "theme": body.get("theme", config.data["theme"]),
-                            "display": {
-                                **config.data["display"],
-                                **{key: body[key] for key in display_keys},
-                            },
-                        })
-                    elif group == "statusbar":
-                        schema.validate_strict(self._statusbar_schema(), body)
-                        statusbar = {
-                            key: value for key, value in body.items()
-                            if key != "rotate_seconds"
-                        }
-                        config.update({"statusbar": statusbar,
-                                       "statusbar_rotate": body.get(
-                                           "rotate_seconds",
-                                           config.data["statusbar_rotate"])})
-                    else:
-                        return self._send(404, {"error": "not found"})
+                    group.apply(body)
                 except ValueError as error:
                     return self._send(400, {"error": str(error)})
+                except (TypeError, KeyError, AttributeError) as error:
+                    # a body the DSL cannot even look at (null for an int,
+                    # a list for a group) is still the client's fault
+                    return self._send(400, {"error": f"invalid value: {error}"})
                 return self._send(200, {"ok": True})
 
         try:
@@ -255,9 +224,12 @@ class WebServer:
         except OSError:
             log.warning("web: port %s unavailable — web UI disabled", port)
             return
+        # port 0 means "any free port": report the one we actually got,
+        # so the panel and the REST payload advertise a live URL
+        self.port = port = self._httpd.server_address[1]
         threading.Thread(target=self._httpd.serve_forever,
                          name="wintermode-web", daemon=True).start()
-        log.info("web: http://%s:%s/", ipv4(), port)
+        log.info("web: %s/", web_url(port))
 
     def stop(self) -> None:
         if self._httpd is not None:

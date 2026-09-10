@@ -43,9 +43,15 @@ CLEAN_SIZES = (26, 44)
 
 
 class Fonts:
+    # masks are what every label on the panel is pasted from; a frame
+    # redraws the same strings over and over, so cache them.  Cleared
+    # wholesale when full — bounded, and no LRU bookkeeping per frame.
+    MASK_CACHE_MAX = 512
+
     def __init__(self, directory: Path | None = None) -> None:
         self._dir = directory or FONTS_DIR
         self._cache: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
+        self._masks: dict[tuple[str, str, int], Image.Image] = {}
 
     def get(self, weight: str, size: int) -> ImageFont.FreeTypeFont:
         key = (weight, size)
@@ -56,36 +62,69 @@ class Fonts:
         return font
 
     def textwidth(self, text: str, weight: str, size: int) -> int:
+        """Advance width — the space the text takes in a line of text."""
         return int(round(self.get(weight, size).getlength(text)))
 
     def textsize(self, text: str, weight: str, size: int) -> tuple[int, int]:
-        """(width, height) of `text` — height is the rendered bbox height."""
-        font = self.get(weight, size)
-        left, top, right, bottom = font.getbbox(text)
-        return right - left, bottom - top
+        """(advance width, INK height) of `text`.
+
+        Height is the ink the glyphs actually put down, not the font's
+        layout box.  `getbbox()` reports the ascender/descender band:
+        for '-' that is 10 rows of which exactly one has ink, so
+        centring on it left the dash near the top of its button.
+        """
+        return self.textwidth(text, weight, size), self._ink_box(
+            text, weight, size)[3]
+
+    def center_y(self, text: str, weight: str, size: int, y0: float,
+                 y1: float) -> float:
+        """The `draw_text` y that centers `text`'s INK in the band y0..y1.
+
+        The one vertical-centering rule in the app: a value, a label and
+        a `-`/`+` glyph all land on the same optical middle, whatever
+        their ink height.
+        """
+        top, _bottom, height = self._ink_box(text, weight, size)
+        return y0 + (y1 - y0 - height) / 2 - top
 
     # --- the one text path --------------------------------------------------
 
+    def _ink_box(self, text: str, weight: str, size: int) -> tuple[int, int, int]:
+        """(top, bottom, height) of the rendered ink within the mask."""
+        box = self._bilevel_mask(text, weight, size).getbbox()
+        if box is None:  # nothing drawn (empty or all-blank text)
+            return 0, 0, 0
+        return box[1], box[3], box[3] - box[1]
+
     def _bilevel_mask(self, text: str, weight: str, size: int) -> Image.Image:
-        font = self.get(weight, size)
-        left, top, right, bottom = font.getbbox(text)
-        mask = Image.new("1", (right - left, bottom - top), 0)
-        ImageDraw.Draw(mask).text((-left, -top), text, font=font, fill=1)
+        key = (text, weight, size)
+        mask = self._masks.get(key)
+        if mask is None:
+            font = self.get(weight, size)
+            left, top, right, bottom = font.getbbox(text)
+            mask = Image.new("1", (max(1, right - left), max(1, bottom - top)), 0)
+            ImageDraw.Draw(mask).text((-left, -top), text, font=font, fill=1)
+            if len(self._masks) >= self.MASK_CACHE_MAX:
+                self._masks.clear()
+            self._masks[key] = mask
         return mask
 
     def draw_text(self, draw, xy, text: str, weight: str, size: int, fill) -> None:
         """Bilevel text at (x, y).  Every call site in the app goes here."""
         if not text:
             return
-        mask = self._bilevel_mask(text, weight, size)
-        if size not in CLEAN_SIZES:
-            clean = min(CLEAN_SIZES, key=lambda s: abs(s - size))
-            if clean != size:
-                scale = size / clean
-                mask = self._bilevel_mask(text, weight, clean)
-                mask = mask.resize(
-                    (max(1, round(mask.width * scale)),
-                     max(1, round(mask.height * scale))),
-                    Image.NEAREST,
-                )
-        draw.bitmap((int(xy[0]), int(xy[1])), mask, fill=fill)
+        # rasterize ONCE, at the size that will actually be pasted: the
+        # nearest-clean size when the request is not already clean
+        clean = size if size in CLEAN_SIZES else min(
+            CLEAN_SIZES, key=lambda s: abs(s - size)
+        )
+        mask = self._bilevel_mask(text, weight, clean)
+        if clean != size:
+            scale = size / clean
+            mask = mask.resize(
+                (max(1, round(mask.width * scale)),
+                 max(1, round(mask.height * scale))),
+                Image.NEAREST,
+            )
+        # round, not truncate: callers hand in measured float centers
+        draw.bitmap((round(xy[0]), round(xy[1])), mask, fill=fill)

@@ -11,6 +11,7 @@ pinned first on the home grid.
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import logging
 import re
 import sys
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from wintermode import schema
+from wintermode.config import RESERVED
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +43,11 @@ def discover(base: Path = MODULES_DIR) -> list[Any]:
             continue
         if not ID_RE.match(entry.name):
             log.warning("registry: skipping %s (invalid module id)", entry.name)
+            continue
+        if entry.name in RESERVED:
+            # a module's id IS its config namespace, so a reserved id would
+            # overwrite a device key (e.g. "theme" -> a dict -> boot crash)
+            log.warning("registry: skipping %s (reserved config key)", entry.name)
             continue
         module_path = entry / "module.py"
         if not module_path.is_file():
@@ -72,6 +79,15 @@ def discover(base: Path = MODULES_DIR) -> list[Any]:
 
 
 def _looks_like_module(obj: Any) -> bool:
+    """An INSTANCE speaking the contract — a class is not a module.
+
+    `hasattr`/`callable` are both true for the class itself, so
+    `MODULE = MyClock` (forgetting the `()`) used to be accepted and
+    every method was then called unbound: the app died on the first bar
+    draw with a TypeError pointing nowhere near the real mistake.
+    """
+    if inspect.isclass(obj):
+        return False
     return all(hasattr(obj, attr) for attr in REQUIRED_ATTRS) and all(
         callable(getattr(obj, method, None)) for method in REQUIRED_METHODS
     )

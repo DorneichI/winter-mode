@@ -306,3 +306,65 @@ def test_clock_module_renders_on_wall_boundaries(make_app):
     expected = _t.strftime("%H:%M", _t.localtime(boundary))
     # the module refreshed AT the boundary — same second the bar shows
     assert app.registry["clock"]._last_text == expected
+
+
+def test_wake_after_a_web_theme_change_repaints_in_the_new_theme(make_app):
+    # the asleep branch used to consume the generation and wake with the
+    # palette from before the change: the panel came up dark for up to a
+    # minute after the phone switched it to light
+    app, lcd, touch, clock = make_app()
+    present(app, lcd)
+    app.config.update({"display": {"mode": "wake_on_touch",
+                                   "idle_seconds": 5}})
+    clock.set(1001.0, 1_700_000_001.0)
+    app._step()
+    clock.set(1010.0, 1_700_000_010.0)
+    app._step()  # asleep
+
+    app.config.update({"theme": "light"})  # the phone PUT lands
+    app._wake()
+    assert app.theme.name == "light"
+    assert app.canvas.getpixel((5, 400)) == app.theme.bg
+
+
+def test_actions_queued_while_asleep_run_before_the_wake(make_app):
+    # run()'s asleep branch never drained the action queue, so a web
+    # POST executed hours later, at the next wake
+    app, lcd, touch, clock = make_app()
+    present(app, lcd)
+    app.config.update({"display": {"mode": "wake_on_touch",
+                                   "idle_seconds": 5}})
+    clock.set(1001.0, 1_700_000_001.0)
+    app._step()
+    clock.set(1010.0, 1_700_000_010.0)
+    app._step()  # asleep
+
+    # the real dummy module's reset action, wired to its own namespace
+    from wintermode.modules.dummy.module import Dummy
+
+    app.registry._all["dummy"] = Dummy()
+    assert app.registry._all["dummy"].id == "dummy"
+    app.config.update_module("dummy", {"count": 7})
+    app.actions.put(("dummy", "reset"))
+    assert app._drain_actions(1010.0, [], 1_700_000_010.0) is True
+    assert app.actions.empty()
+    assert app.config.data["dummy"]["count"] == 0
+
+
+def test_the_waking_finger_never_fires_a_tap(make_app, point):
+    # _wake() seeds the finger that is still down at wake: its release
+    # must not activate whatever card it happens to land on
+    app, lcd, touch, clock = make_app()
+    present(app, lcd)
+    app.config.update({"display": {"mode": "wake_on_touch",
+                                   "idle_seconds": 5}})
+    clock.set(1001.0, 1_700_000_001.0)
+    app._step()
+    clock.set(1010.0, 1_700_000_010.0)
+    app._step()  # asleep
+
+    touch.script = [[point(400, 400)], []]  # still down, then released
+    app._wake()  # reads (and seeds) the waking finger
+    assert app.tracker.update([], 1010.1) == []  # release fires nothing
+    assert app._step() is False
+    assert len(app.nav) == 1  # no card was activated

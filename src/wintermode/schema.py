@@ -18,10 +18,17 @@ TYPES = ("bool", "choice", "int", "text", "time")
 
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
+# "no value at all" — distinct from None, which is a value the caller
+# may legitimately supply and which must be reported when rejected
+ABSENT = object()
 
-def _coerce(spec: dict, value: Any, strict: bool = False) -> Any:
+
+def _coerce(spec: dict, value: Any = ABSENT, strict: bool = False) -> Any:
+    """Coerce `value` to `spec`'s type; ABSENT means "use the default"."""
     kind = spec.get("type")
     default = spec.get("default")
+    if value is ABSENT:  # absent key: the default is not a rejection
+        return default
     try:
         if kind == "bool":
             if isinstance(value, str):
@@ -35,7 +42,7 @@ def _coerce(spec: dict, value: Any, strict: bool = False) -> Any:
                 return bool(value)
             raise ValueError(value)
         if kind == "choice":
-            if value in spec["options"]:
+            if value in spec.get("options", []):
                 return value
             raise ValueError(value)
         if kind == "int":
@@ -60,7 +67,15 @@ def _coerce(spec: dict, value: Any, strict: bool = False) -> Any:
             value, spec, kind, default,
         )
         return default
-    return default
+
+
+def coerce_bool(value: Any, default: bool = True) -> bool:
+    """Coerce one standalone value to bool, the same way a spec would.
+
+    For keys the config layer heals itself, where there is no per-key
+    spec — `bool("false")` is True, which is not what a hand-edit means.
+    """
+    return _coerce({"type": "bool", "default": default}, value)
 
 
 def validate_strict(schema: dict, values: dict) -> dict:
@@ -102,11 +117,14 @@ def validate(schema: dict, values: dict | None) -> dict:
         values = {}
     out: dict[str, Any] = {}
     for key, spec in schema.items():
-        out[key] = _coerce(spec, values.get(key))
+        out[key] = _coerce(spec, values.get(key, ABSENT))
     return out
 
 
 # --- form-state transitions, shared by the touch form ---------------------
+#
+# Every one of these is None-tolerant: a spec with no `default` stores
+# None, and a stepper tapped on such a field must not take the app down.
 
 
 def toggle_bool(_spec: dict, value: Any) -> bool:
@@ -114,7 +132,9 @@ def toggle_bool(_spec: dict, value: Any) -> bool:
 
 
 def cycle_choice(spec: dict, value: Any) -> Any:
-    options = spec["options"]
+    options = spec.get("options") or []
+    if not options:  # malformed spec: nothing to cycle to
+        return value
     try:
         index = options.index(value)
     except ValueError:
@@ -123,13 +143,18 @@ def cycle_choice(spec: dict, value: Any) -> Any:
 
 
 def step_int(spec: dict, value: Any, delta: int) -> int:
+    if value is None:
+        value = spec.get("default", spec.get("min", 0))
     number = int(value) + delta
     return max(spec.get("min", number), min(spec.get("max", number), number))
 
 
-def step_time(value: Any, part: str, delta: int) -> str:
+def step_time(value: Any, part: str, delta: int, fallback: str = "00:00") -> str:
     """Bump the hour or minute of an "HH:MM" value (minutes step by 5)."""
-    hour, minute = (int(part_) for part_ in value.split(":"))
+    text = value if isinstance(value, str) else fallback
+    if not TIME_RE.match(text):
+        text = fallback
+    hour, minute = (int(part_) for part_ in text.split(":"))
     if part == "hour":
         hour = (hour + delta) % 24
     else:

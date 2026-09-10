@@ -128,3 +128,69 @@ def test_font_is_served(web):
     assert status == 200
     assert len(data) > 100_000
     assert request("GET", port, "/font/evil.ttf")[0] == 404
+
+
+def test_statusbar_schema_hides_modules_that_publish_nothing(web, config,
+                                                             fake_module):
+    # the web used to offer a "settings bar" toggle the panel never showed
+    _server, _actions, _config, registry, port = web
+    quiet = fake_module("settings")
+    quiet.status_bar = False
+    registry._all["settings"] = quiet
+    status, device = request("GET", port, "/api/device")
+    assert status == 200
+    statusbar = next(g for g in device["groups"] if g["id"] == "statusbar")
+    assert "settings" not in statusbar["schema"]
+    assert "settings" not in statusbar["values"]
+    assert set(statusbar["schema"]) == {"clock", "dummy", "rotate_seconds"}
+
+
+def test_put_device_theme_is_not_404(web):
+    # README documents PUT /api/device/theme; it used to fall through
+    # to the 404 branch of _put_device
+    _server, _actions, config, _registry, port = web
+    status, _payload = request("PUT", port, "/api/device/theme",
+                               {"theme": "light"})
+    assert status == 200
+    assert config.data["theme"] == "light"
+
+
+def test_put_with_a_null_value_is_a_400_not_a_dead_connection(web):
+    # int(None) raises TypeError, which the ValueError-only guard missed:
+    # the handler thread died and the client got no response at all
+    _server, _actions, config, _registry, port = web
+    assert request("PUT", port, "/api/device/statusbar",
+                   {"rotate_seconds": None})[0] == 400
+    assert request("PUT", port, "/api/device/display",
+                   {"idle_seconds": None})[0] == 400
+    assert request("PUT", port, "/api/modules/clock/config",
+                   {"format24": []})[0] == 400
+    assert request("GET", port, "/api/device")[0] == 200  # still serving
+
+
+def test_device_puts_are_coerced_and_clamped_before_saving(web):
+    _server, _actions, config, _registry, port = web
+    assert request("PUT", port, "/api/device/statusbar",
+                   {"rotate_seconds": "10"})[0] == 200
+    assert config.data["statusbar_rotate"] == 10  # str coerced to int
+    assert request("PUT", port, "/api/device/display",
+                   {"idle_seconds": 99999})[0] == 200
+    assert config.data["display"]["idle_seconds"] == 3600  # clamped to max
+
+
+def test_a_partial_statusbar_put_keeps_the_other_toggles(web):
+    _server, _actions, config, _registry, port = web
+    config.update({"statusbar": {"clock": False, "dummy": True}})
+    assert request("PUT", port, "/api/device/statusbar",
+                   {"rotate_seconds": 30})[0] == 200
+    assert config.data["statusbar"]["clock"] is False
+    assert config.data["statusbar"]["dummy"] is True
+    assert config.data["statusbar_rotate"] == 30
+
+
+def test_reported_web_url_uses_the_bound_port(web):
+    # port 0 means "any free port": the panel and the payload must
+    # advertise the port the server actually got, not the default
+    _server, _actions, _config, _registry, port = web
+    _status, device = request("GET", port, "/api/device")
+    assert device["network"]["web_url"].endswith(f":{port}")

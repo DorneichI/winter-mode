@@ -52,6 +52,17 @@ def test_tap_suppressed_while_second_finger_down(point):
     assert t.update([point(400, 400, 1, event=EVENT_CONTACT)], 0.1) == []
 
 
+def test_two_fingers_down_never_leave_a_tap_behind(point):
+    # thumbs lifting one poll apart: the first release is suppressed (a
+    # finger is still down) but the second used to fire a tap on
+    # whatever it happened to be resting on
+    tracker = TapTracker()
+    tracker.update([point(100, 100, fid=1), point(300, 300, fid=2)], 100.0)
+    held = [point(300, 300, fid=2, event=EVENT_CONTACT)]
+    assert tracker.update(held, 100.1) == []
+    assert tracker.update([], 100.2) == []
+
+
 def test_empty_polls_emit_nothing(point):
     t = TapTracker()
     assert t.update([], 0.0) == []
@@ -63,3 +74,13 @@ def test_small_movement_within_slop_still_fires(point):
     t.update([point(10, 10)], 0.0)
     t.update([point(14, 16, event=EVENT_CONTACT)], 0.05)  # |dx|+|dy| = 10
     assert t.update([], 0.1) == [("tap", 10, 10)]
+
+
+def test_two_fingers_lifting_in_one_poll_fire_no_tap(point):
+    # a two-thumb pinch releasing both thumbs inside the same read():
+    # "no finger down at release" is true for BOTH, so the per-finger
+    # rule alone fired two taps for one gesture
+    tracker = TapTracker()
+    both = [point(100, 100, fid=1), point(300, 300, fid=2)]
+    tracker.update(both, 100.0)
+    assert tracker.update([], 100.1) == []

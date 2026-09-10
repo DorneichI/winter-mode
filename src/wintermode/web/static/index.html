@@ -33,6 +33,9 @@
   .card .hint { display: block; text-transform: none; color: var(--dim);
                 font-size: 14px; margin-top: 6px; }
   .page { max-width: 640px; margin-top: 20px; }
+  h2 { font-size: 22px; letter-spacing: 2px; margin: 16px 0 12px; }
+  h3 { font-size: 18px; letter-spacing: 1px; color: var(--accent);
+       margin: 24px 0 4px; text-transform: uppercase; }
   .field { display: flex; align-items: center; gap: 16px;
            border-bottom: 1px solid var(--border); padding: 12px 4px; }
   .field label { flex: 1; color: var(--dim); text-transform: uppercase; }
@@ -64,6 +67,15 @@
 const $ = (sel) => document.querySelector(sel);
 const main = $("#main");
 
+/* every value that reaches the page came from a config file or a form
+   field, so it is escaped on the way into HTML — a greeting of
+   x" onmouseover="..." must stay text, not become markup */
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[ch]);
+}
+
 async function api(path, opts) {
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
@@ -86,24 +98,28 @@ function formHTML(schema, values, submit) {
     const hidden = cond && values[cond.field] !== cond.equals;
     let control = "";
     if (spec.type === "bool") {
-      control = `<input type="checkbox" data-key="${key}"` +
+      control = `<input type="checkbox" data-key="${esc(key)}"` +
         `${values[key] ? " checked" : ""}>`;
     } else if (spec.type === "choice") {
-      control = `<select data-key="${key}">` + spec.options.map((o) =>
-        `<option${o === values[key] ? " selected" : ""}>${o}</option>`).join("") +
-        `</select>`;
+      control = `<select data-key="${esc(key)}">` +
+        (spec.options ?? []).map((o) =>
+          `<option${o === values[key] ? " selected" : ""}>${esc(o)}</option>`
+        ).join("") + `</select>`;
     } else if (spec.type === "int") {
-      control = `<input type="number" data-key="${key}" min="${spec.min ?? ""}"` +
-        ` max="${spec.max ?? ""}" value="${values[key] ?? spec.default ?? ""}">`;
+      control = `<input type="number" data-key="${esc(key)}"` +
+        ` min="${esc(spec.min ?? "")}" max="${esc(spec.max ?? "")}"` +
+        ` value="${esc(values[key] ?? spec.default ?? "")}">`;
     } else if (spec.type === "time") {
-      control = `<input type="time" data-key="${key}"` +
-        ` value="${values[key] ?? spec.default ?? "07:00"}">`;
+      control = `<input type="time" data-key="${esc(key)}"` +
+        ` value="${esc(values[key] ?? spec.default ?? "07:00")}">`;
     } else {
-      control = `<input type="text" data-key="${key}"` +
-        ` maxlength="${spec.maxlength ?? 64}" value="${values[key] ?? ""}">`;
+      control = `<input type="text" data-key="${esc(key)}"` +
+        ` maxlength="${esc(spec.maxlength ?? 64)}"` +
+        ` value="${esc(values[key] ?? "")}">`;
     }
-    return `<div class="field${hidden ? " hidden" : ""}" data-field="${key}">` +
-      `<label>${spec.title ?? key}</label>${control}</div>`;
+    return `<div class="field${hidden ? " hidden" : ""}"` +
+      ` data-field="${esc(key)}">` +
+      `<label>${esc(spec.title ?? key)}</label>${control}</div>`;
   }).join("") + `<div class="actions"><button type="submit">save</button></div>`;
 }
 
@@ -129,7 +145,7 @@ async function bindForm(container, schema, values, putPath) {
       current = { ...current, ...body };
       if (putPath.startsWith("/api/device")) {
         await loadDevice();  // re-theme this page too
-        showDevice();
+        showSettings();
       } else {
         current = out.values ?? current;
         await bindForm(container, schema, current, putPath);
@@ -155,45 +171,54 @@ async function showHome() {
   const [device, modules] = await Promise.all([loadDevice(), api("/api/modules")]);
   $("#subtitle").textContent =
     `v${device.version} — ${device.network.web_url}`;
-  // the SETTINGS card opens the device groups (display, status bar);
+  // the SETTINGS card opens the device settings (display, status bar);
   // every other module card opens that module's own config page
   main.innerHTML = `<div class="grid">` +
     modules.map((m) =>
-      `<div class="card" data-module="${m.id}">${m.title}` +
-      `<span class="hint">${m.id === "settings" ? "display, status bar"
-        : m.actions.length ? m.actions.length + " action(s)" : "configure"}</span></div>`)
+      `<div class="card" data-module="${esc(m.id)}">${esc(m.title)}` +
+      `<span class="hint">${m.id === "settings"
+        ? esc(device.groups.map((g) => g.title.toLowerCase()).join(", "))
+        : esc(m.actions.length ? m.actions.length + " action(s)" : "configure")}` +
+      `</span></div>`)
       .join("") + `</div>`;
   main.querySelectorAll(".card").forEach((card) => {
     card.addEventListener("click", () => {
       card.dataset.module === "settings"
-        ? showDevice()
+        ? showSettings()
         : showModule(card.dataset.module);
     });
   });
 }
 
-async function showModule(id) {
-  const data = await api(`/api/modules/${id}/config`);
-  main.innerHTML = `<div class="page"><p><a class="back" href="#">‹ back</a></p></div>`;
+function pageShell(title) {
+  main.innerHTML = `<div class="page">` +
+    `<p><a class="back" href="#">‹ back</a></p>` +
+    `<h2>${esc(title)}</h2></div>`;
   main.querySelector("a.back").addEventListener("click", (e) => {
     e.preventDefault(); showHome();
   });
+}
+
+async function showModule(id) {
+  const data = await api(`/api/modules/${encodeURIComponent(id)}/config`);
+  const module = (await api("/api/modules")).find((m) => m.id === id);
+  pageShell(module ? module.title : id);
   const container = document.createElement("div");
   main.appendChild(container);
   if (Object.keys(data.schema).length === 0) {
     container.innerHTML = `<div class="info">no configurable fields</div>`;
   } else {
     await bindForm(container, data.schema, data.values,
-                   `/api/modules/${id}/config`);
+                   `/api/modules/${encodeURIComponent(id)}/config`);
   }
-  const module = (await api("/api/modules")).find((m) => m.id === id);
   if (module.actions.length) {
     const box = document.createElement("div");
     box.className = "actions";
     box.innerHTML = module.actions.map((a) =>
-      `<button data-action="${a.id}">${a.title}</button>`).join("");
+      `<button data-action="${esc(a.id)}">${esc(a.title)}</button>`).join("");
     box.querySelectorAll("button").forEach((b) => b.addEventListener("click", async () => {
-      try { await api(`/api/modules/${id}/actions/${b.dataset.action}`,
+      try { await api(`/api/modules/${encodeURIComponent(id)}/actions/` +
+                      `${encodeURIComponent(b.dataset.action)}`,
                       { method: "POST" }); }
       catch (err) { showError(err.message); }
     }));
@@ -201,29 +226,28 @@ async function showModule(id) {
   }
 }
 
-async function showDevice() {
+/* SETTINGS is the device settings: the groups GET /api/device serves,
+   which is exactly what the panel's SETTINGS page shows */
+async function showSettings() {
   const device = await loadDevice();
   $("#subtitle").textContent = `v${device.version} — ${device.network.web_url}`;
-  main.innerHTML = `<div class="page"><p><a class="back" href="#">‹ back</a></p></div>`;
-  main.querySelector("a.back").addEventListener("click", (e) => {
-    e.preventDefault(); showHome();
-  });
+  pageShell("SETTINGS");
   for (const group of device.groups) {
-    const heading = document.createElement("h2");
+    const heading = document.createElement("h3");
     heading.textContent = group.title;
     main.appendChild(heading);
     const container = document.createElement("div");
     main.appendChild(container);
     await bindForm(container, group.schema, group.values,
-                   `/api/device/${group.id}`);
+                   `/api/device/${encodeURIComponent(group.id)}`);
   }
   main.insertAdjacentHTML("beforeend", `<div class="info">` +
-    `host: ${device.network.hostname} · ip: ${device.network.ipv4}` +
+    `host: ${esc(device.network.hostname)} · ip: ${esc(device.network.ipv4)}` +
     `</div>`);
 }
 
 function showError(message) {
-  $("#error").textContent = `error: ${message}`;
+  $("#error").textContent = `error: ${String(message).slice(0, 200)}`;
 }
 
 showHome().catch((err) => showError(err.message));

@@ -9,6 +9,7 @@ from wintermode.modules.clock.module import Clock
 from wintermode.modules.dummy.module import Dummy
 from wintermode.modules.settings.module import Settings
 from wintermode.registry import Registry
+from wintermode.views import InfoView
 
 
 def make_canvas(theme):
@@ -116,8 +117,11 @@ def test_settings_statusbar_schema_lists_other_modules_plus_rotation(
     registry = setup_registry(config, Clock(), Dummy(), settings)
     ctx = ctx(registry=registry)
     settings.cards(ctx)
-    view = settings._views["statusbar"]
+    view = settings._device_views["statusbar"]
+    # the hub itself publishes no status items, so it gets no toggle —
+    # and the web API serves this exact schema (wintermode.device)
     assert set(view.schema) == {"clock", "dummy", "rotate_seconds"}
+    assert "settings" not in view.schema
 
 
 def test_settings_display_page_merges_theme_and_behavior(
@@ -126,9 +130,25 @@ def test_settings_display_page_merges_theme_and_behavior(
     registry = setup_registry(config, Clock(), Dummy(), settings)
     ctx = ctx(registry=registry)
     settings.cards(ctx)
-    view = settings._views["display"]
+    view = settings._device_views["display"]
     assert set(view.schema) == {"theme", "light_from", "light_to",
                                 "mode", "idle_seconds"}
+
+
+def test_settings_module_view_is_not_shadowed_by_a_device_page(
+        theme, fonts, ctx, config, fake_module):
+    """A module whose id matches a device page still gets its own form."""
+    settings = Settings()
+    system = fake_module("system")
+    system.config_schema = {"level": {"type": "int", "title": "Level",
+                                      "default": 3}}
+    registry = setup_registry(config, Clock(), Dummy(), settings, system)
+    ctx = ctx(registry=registry)
+    settings.cards(ctx)
+    settings.cards(ctx)  # a second render must not swap the two
+    assert settings._module_views["system"].schema == system.config_schema
+    # the device page under the same name is still the SYSTEM info view
+    assert isinstance(settings._device_views["system"], InfoView)
 
 
 def test_settings_module_card_tap_pushes_form(theme, fonts, ctx, config):

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import socket
 
+DEFAULT_WEB_PORT = 8080
+
 
 def ipv4() -> str:
     """This host's outbound IPv4 (the LAN address the web UI lives on)."""
@@ -15,3 +17,12 @@ def ipv4() -> str:
         return ip
     except OSError:
         return "unknown"
+
+
+def web_url(port: int | None = DEFAULT_WEB_PORT) -> str:
+    """The URL the web UI is reachable at — the ONE place it is formatted.
+
+    `port` is the port the server actually bound (None while it is not
+    running), so the panel and the REST payload cannot disagree.
+    """
+    return f"http://{ipv4()}:{port or DEFAULT_WEB_PORT}"

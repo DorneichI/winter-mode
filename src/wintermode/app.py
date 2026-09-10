@@ -51,7 +51,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--config", type=Path, default=None, help="path to config.json"
     )
     parser.add_argument(
-        "--web-port", type=int, default=None, help="web UI port (default 8080)"
+        "--web-port", type=int, default=None,
+        help="web UI port (default 8080, 0 for an ephemeral port)",
     )
     return parser.parse_args(argv)
 
@@ -89,6 +90,7 @@ class WinterApp:
         self.asleep = False
         self.last_touch = self.clock()[0]  # the sleep timer starts at boot
         self.actions: queue.Queue = queue.Queue()  # web POSTs land here
+        self.web_port: int | None = None  # set once the web server binds
         self._bar_hitboxes: list[tuple[tuple[int, int, int, int], str]] = []
 
     # --- context ----------------------------------------------------------
@@ -106,6 +108,7 @@ class WinterApp:
             wall=wall,
             config=self.config,
             registry=self.registry,
+            web_port=self.web_port,
         )
 
     # --- bar --------------------------------------------------------------
@@ -179,6 +182,45 @@ class WinterApp:
     def _render_content(self, now: float, points, wall: float) -> None:
         self.nav.top.render(self.draw, self._ctx(now, points, wall))
 
+    def _repaint(self, now: float, points, wall: float) -> None:
+        """One full-frame repaint: clear, re-render the content, redraw the bar.
+
+        The single place the whole canvas is rebuilt, so a theme change,
+        a nav change, a minute flip and a wake can never drift apart.
+        """
+        self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height),
+                            fill=self.theme.bg)
+        self._render_content(now, points, wall)
+        self._draw_bar(now, points, wall)
+
+    def _reload_theme(self, wall: float) -> bool:
+        """Pick up a theme change from config; True when it actually moved."""
+        theme = effective_theme(self.config, wall)
+        if theme == self.theme:
+            return False
+        self.theme = theme
+        return True
+
+    def _drain_actions(self, now: float, points, wall: float) -> bool:
+        """Run every web-queued (module_id, action_id) on this thread.
+
+        True when at least one ran.  Called from the sleeping branch too:
+        an action POSTed while the panel sleeps must run now, not hours
+        later on the way back up.
+        """
+        ran = False
+        while not self.actions.empty():
+            module_id, action_id = self.actions.get_nowait()
+            module = self.registry.get(module_id) if self.registry else None
+            if module is not None:
+                try:
+                    module.on_action(action_id, self._ctx(now, points, wall))
+                except Exception:  # one bad action must not kill the loop
+                    log.exception("module %s action %r failed", module_id,
+                                  action_id)
+            ran = True
+        return ran
+
     def _step(self) -> bool:
         """One loop pass.  Returns True when the canvas changed."""
         now, wall = self.clock()
@@ -187,11 +229,7 @@ class WinterApp:
         rerender_content = False
 
         # web-triggered actions execute here, on the main loop thread
-        while not self.actions.empty():
-            module_id, action_id = self.actions.get_nowait()
-            module = self.registry.get(module_id) if self.registry else None
-            if module is not None:
-                module.on_action(action_id, self._ctx(now, points, wall))
+        if self._drain_actions(now, points, wall):
             rerender_content = True
             dirty = True
 
@@ -218,8 +256,7 @@ class WinterApp:
             # align refreshes to wall-clock second boundaries so module
             # updates and the bar tick land in the same frame
             self._next_refresh = int(wall) + 1
-            self._render_content(now, points, wall)
-            self._draw_bar(now, points, wall)
+            self._repaint(now, points, wall)
             dirty = True
             rerender_content = False
 
@@ -227,11 +264,8 @@ class WinterApp:
         # tap lands as a single re-themed frame, not form-then-theme
         if self.config and self.config.generation != self.last_gen:
             self.last_gen = self.config.generation
-            self.theme = effective_theme(self.config, wall)
-            self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height),
-                                fill=self.theme.bg)
-            self._render_content(now, points, wall)
-            self._draw_bar(now, points, wall)
+            self._reload_theme(wall)
+            self._repaint(now, points, wall)
             return True
 
         if rerender_content:
@@ -254,13 +288,8 @@ class WinterApp:
         minute = int(wall) // 60
         if self.last_minute != minute:
             self.last_minute = minute
-            theme = effective_theme(self.config, wall)
-            if theme is not self.theme:
-                self.theme = theme
-                self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height),
-                                    fill=self.theme.bg)
-                self._render_content(now, points, wall)
-                self._draw_bar(now, points, wall)
+            if self.config and self._reload_theme(wall):
+                self._repaint(now, points, wall)
                 dirty = True
 
         # wake_on_touch: idle long enough -> black frame, panel sleeps
@@ -295,10 +324,11 @@ class WinterApp:
         points = self.touch.read(mapped=True)
         # the waking tap must never activate UI: seed it as dead
         self.tracker.seed(points, now)
-        self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height),
-                            fill=self.theme.bg)
-        self._render_content(now, points, wall)
-        self._draw_bar(now, points, wall)
+        # a config change that landed while asleep must be on screen the
+        # instant the panel comes back — repaint with the CURRENT theme
+        if self.config:
+            self._reload_theme(wall)
+        self._repaint(now, points, wall)
         self.lcd.image(self.canvas)
         log.info("woke up")
 
@@ -307,6 +337,12 @@ class WinterApp:
         try:
             while True:
                 if self.asleep:
+                    # actions and config changes queued while asleep
+                    # (web POST/PUT) land before the panel comes back
+                    now, wall = self.clock()
+                    if self._drain_actions(now, [], wall):
+                        self._wake()
+                        continue
                     # a config change while asleep (e.g. web PUT) wakes too
                     if self.config and self.config.generation != self.last_gen:
                         self.last_gen = self.config.generation
@@ -340,9 +376,11 @@ def main() -> None:
         # the web companion starts before the loop so it is up by boot-end
         from wintermode.web.server import DEFAULT_PORT, WebServer
 
-        port = args.web_port or DEFAULT_PORT
+        port = DEFAULT_PORT if args.web_port is None else args.web_port
         server = WebServer(config, registry, app.actions, port=port)
         server.start()
+        # whatever port the kernel actually gave us (0 = ephemeral)
+        app.web_port = server.port
         play_boot(lcd, theme, fonts, __version__)
         app.run()
 

@@ -69,3 +69,44 @@ def test_update_and_update_module_persist(tmp_path):
     reloaded = json.loads(path.read_text())
     assert reloaded["theme"] == "night"
     assert reloaded["dummy"] == {"count": 5}
+
+
+def test_update_module_with_a_schema_validates_the_write(tmp_path):
+    # an unvalidated write persisted count=120 past max=99; the next boot
+    # clamped it to 99, and "+" then made the number go DOWN
+    from wintermode.modules.dummy.module import SCHEMA
+
+    config = Config(tmp_path / "config.json")
+    config.update_module("dummy", {"count": 120}, spec=SCHEMA)
+    assert config.data["dummy"]["count"] == 99
+    assert config.update_module("dummy", {"count": 3},
+                                spec=SCHEMA)["count"] == 3
+    # without a spec the caller keeps the old permissive behavior
+    config.update_module("dummy", {"count": 500})
+    assert config.data["dummy"]["count"] == 500
+
+
+def test_a_corrupt_file_is_rewritten_not_just_healed_in_memory(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text("{ this is not json")
+    config = Config(path)
+    assert config.data["theme"] == "dark"
+    assert json.loads(path.read_text()) == config.data  # the repair stuck
+
+
+def test_a_repairable_value_is_written_back(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"theme": 42, "statusbar": {"clock": "false"}}))
+    Config(path)
+    on_disk = json.loads(path.read_text())
+    assert on_disk["theme"] == "dark"
+    assert on_disk["statusbar"]["clock"] is False  # not bool("false") == True
+
+
+def test_a_healthy_file_is_not_rewritten(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"theme": "light"}))
+    before = path.stat().st_mtime_ns
+    config = Config(path)
+    assert config.data["theme"] == "light"
+    assert path.stat().st_mtime_ns == before  # absent keys are not a repair

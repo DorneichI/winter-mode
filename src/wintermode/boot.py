@@ -51,7 +51,7 @@ def play_boot(lcd, theme: Theme, fonts: Fonts, version: str) -> None:
     for size in steps:
         draw.rectangle((0, 0, width, height), fill=theme.bg)
         x = (width - fonts.textwidth("WINTER MODE", "regular", size)) / 2
-        y = (height - fonts.textsize("WINTER MODE", "regular", size)[1]) / 2
+        y = fonts.center_y("WINTER MODE", "regular", size, 0, height)
         fonts.draw_text(draw, (x, y), "WINTER MODE", "regular", size,
                         theme.fg)
         _draw_version(draw, fonts, theme, width, height, version)

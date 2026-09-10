@@ -34,6 +34,17 @@ def truncate(fonts: Fonts, text: str, max_width: int, weight: str = "regular",
     return text + ".."
 
 
+def text_y(fonts: Fonts, text: str, y0: float, y1: float, weight: str = "regular",
+           size: int = SIZE_CARD) -> float:
+    """The `draw_text` y that centers `text` in the band y0..y1.
+
+    Thin wrapper over Fonts.center_y, which owns the metrics: never
+    hand-roll `(y1 - y0 - 26) // 2` — that is how the stepper's value
+    ended up sitting at the top of its buttons.
+    """
+    return fonts.center_y(text, weight, size, y0, y1)
+
+
 def draw_button(
     draw,
     rect: Rect,
@@ -44,16 +55,20 @@ def draw_button(
     size: int = SIZE_CARD,
     pressed: bool = False,
 ) -> Rect:
-    """A bordered box with a centered label; pressed = inverse video."""
+    """A bordered box with a centered label; pressed = inverse video.
+
+    A label too wide for the box is truncated, never overprinted on the
+    neighbouring card.
+    """
     x0, y0, x1, y1 = rect
     fill = theme.fg if pressed else theme.bg
     text_fill = theme.bg if pressed else theme.fg
     draw.rectangle(rect, fill=fill)
     draw.rectangle(rect, outline=theme.border)
-    _, text_h = fonts.textsize(label, weight, size)
+    label = truncate(fonts, label, max(1, x1 - x0 - 12), weight, size)
     text_x = x0 + (x1 - x0 - fonts.textwidth(label, weight, size)) / 2
-    text_y = y0 + (y1 - y0 - text_h) / 2
-    fonts.draw_text(draw, (text_x, text_y), label, weight, size, text_fill)
+    fonts.draw_text(draw, (text_x, text_y(fonts, label, y0, y1, weight, size)),
+                    label, weight, size, text_fill)
     return rect
 
 
@@ -101,8 +116,7 @@ def draw_paginator(
     counter_w = fonts.textwidth(counter, "regular", size)
     total = prev_w + next_w + counter_w + 40
     cx = x0 + (x1 - x0) / 2
-    _, text_h = fonts.textsize(label_prev, "regular", size)
-    ty = y0 + (y1 - y0 - text_h) / 2
+    ty = text_y(fonts, label_prev, y0, y1, size=size)
 
     prev_x = cx - total / 2
     counter_x = prev_x + prev_w + 20
