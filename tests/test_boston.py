@@ -1,6 +1,7 @@
 """The boston module: map, hitboxes, and the trip alert state machine."""
 
 import json
+import math
 import threading
 
 import pytest
@@ -101,7 +102,7 @@ def test_graph_covers_all_four_lines(boston):
     assert len(multi) == 1
     a, b, colors = multi[0]
     assert {a["id"], b["id"]} == {"haymarket", "north_station"}
-    assert colors == ["green", "orange"]
+    assert colors == ["orange", "green"]
 
 
 def test_every_station_has_coordinates(boston):
@@ -175,6 +176,27 @@ def test_station_tap_pushes_confirm_alert(boston, trips_fetch, theme, fonts,
     assert alert._state == "confirm"
     assert alert._mode == "transit"
     assert fetch.calls and fetch.calls[0]["lat"] == pytest.approx(42.356395)
+
+
+def test_tap_picks_nearest_station_not_first_hitbox(boston, trips_fetch,
+                                                    theme, fonts, ctx,
+                                                    config):
+    """Downtown stations sit closer than a hitbox apart; the nearest
+    station center must win, not hitbox insertion order."""
+    fetch = trips_fetch()
+    fetch.release = None
+    boston._fetch = fetch
+    c = make_ctx(ctx, config)
+    render(boston, c)
+    park = boston._stations["park_street"]
+    charles = boston._stations["charles_mgh"]
+    px, py = boston._place(park, c)
+    nx, ny = boston._place(charles, c)
+    assert math.hypot(px - nx, py - ny) < 2 * 22  # hitboxes overlap
+    # three quarters of the way from charles to park: park is nearest
+    tx, ty = int((3 * px + nx) / 4), int((3 * py + ny) / 4)
+    assert boston.on_tap(tx, ty, c) is True
+    assert fetch.calls[0]["lat"] == pytest.approx(42.356395)
 
 
 def test_tap_without_address_shows_descriptive_error(boston, trips_fetch,

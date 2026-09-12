@@ -183,10 +183,19 @@ class Boston:
     # --- taps --------------------------------------------------------------
 
     def on_tap(self, x: int, y: int, ctx: Ctx) -> bool:
-        for rect, vid in self._hitboxes.items():
-            if _inside(rect, x, y):
-                self._start_trip(vid, ctx)
-                return True
+        # the nearest station center within HIT_PAD wins: downtown
+        # stations are closer than a hitbox apart, so overlap order must
+        # not decide the trip
+        best = None
+        bestd = HIT_PAD
+        for v in self._stations.values():
+            cx, cy = self._place(v, ctx)
+            d = math.hypot(cx - x, cy - y)
+            if d <= bestd:
+                best, bestd = v, d
+        if best is not None:
+            self._start_trip(best["id"], ctx)
+            return True
         return False
 
     def _start_trip(self, vid: str, ctx: Ctx) -> bool:

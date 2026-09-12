@@ -11,3 +11,4 @@ venv/
 
 # local secrets overlay: addresses, API keys
 config.local.json
+*.bak
