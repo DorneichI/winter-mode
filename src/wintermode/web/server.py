@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from wintermode import __version__, device, schema
+from wintermode.config import write_atomic
 from wintermode.fonts import FONTS_DIR
 from wintermode.net import DEFAULT_WEB_PORT, ipv4, web_url
 from wintermode.theme import effective_theme
@@ -36,6 +37,17 @@ FONT_FILES = {
     "3270-Regular.ttf": FONTS_DIR / "3270-Regular.ttf",
     "3270SemiCondensed-Regular.ttf": FONTS_DIR / "3270SemiCondensed-Regular.ttf",
 }
+
+# the boston map graph, edited by the /map arrangement page
+GRAPH_PATH = Path(__file__).resolve().parent.parent / "modules" / "boston" / \
+    "graph.json"
+
+
+def _static_page(name: str) -> bytes | None:
+    """A page from the bundled static dir, or None — a missing file is a
+    404 the handler can answer, not a traceback on the way out."""
+    path = STATIC_DIR / name
+    return path.read_bytes() if path.is_file() else None
 
 
 def _theme_tokens(theme) -> dict[str, str]:
@@ -73,6 +85,9 @@ class WebServer:
                 self.send_response(code)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(body)))
+                # everything is tiny and changes live — a cached page is
+                # a stale settings form
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -101,8 +116,11 @@ class WebServer:
             # -- GET ---------------------------------------------------------
             def do_GET(self) -> None:
                 path = urlparse(self.path).path
-                if path == "/":
-                    page = (STATIC_DIR / "index.html").read_bytes()
+                if path in ("/", "/map"):
+                    page = _static_page(
+                        "index.html" if path == "/" else "map.html")
+                    if page is None:
+                        return self._send(404, {"error": "no such page"})
                     return self._send(200, page, "text/html; charset=utf-8")
                 if path.startswith("/font/"):
                     name = path[len("/font/"):]
@@ -111,6 +129,12 @@ class WebServer:
                         return self._send(200, font_path.read_bytes(),
                                           "font/ttf")
                     return self._send(404, {"error": "unknown font"})
+                if path == "/api/boston/graph":
+                    try:
+                        data = json.loads(GRAPH_PATH.read_text())
+                    except (OSError, ValueError):
+                        return self._send(500, {"error": "unreadable graph"})
+                    return self._send(200, data)
                 if path == "/api/modules":
                     payload = [{
                         "id": module.id, "title": module.title,
@@ -126,10 +150,7 @@ class WebServer:
                     module = self._module(parts[0])
                     if module is None:
                         return
-                    return self._send(200, {
-                        "schema": module.config_schema or {},
-                        "values": config.data.get(module.id, {}),
-                    })
+                    return self._send(200, self._config_payload(module))
                 self._send(404, {"error": "not found"})
 
             # -- PUT ---------------------------------------------------------
@@ -138,26 +159,28 @@ class WebServer:
                 body = self._json_body()
                 if body is None:
                     return self._send(400, {"error": "expected a JSON object"})
+                if path == "/api/boston/graph":
+                    return self._put_graph(body)
                 parts = self._split(path, "/api/modules/", 2)
                 if parts and parts[1] == "config":
                     module = self._module(parts[0])
                     if module is None:
                         return
+                    spec = module.config_schema or {}
                     try:
-                        schema.validate_strict(module.config_schema or {}, body)
-                        current = config.data.get(module.id, {})
-                        if not isinstance(current, dict):
-                            current = {}
-                        valid = schema.validate(module.config_schema or {},
-                                                {**current, **body})
+                        # strict first, so a bogus body is a 400 before
+                        # anything is written
+                        schema.validate_strict(spec, body)
+                        # update_module owns the local/tracked split, so
+                        # only the keys this body carried reach a file
+                        config.update_module(module.id, body, spec)
                     except ValueError as error:
                         return self._send(400, {"error": str(error)})
                     except (TypeError, KeyError) as error:
                         # null for an int, a choice spec with no options:
                         # the body is bad, the handler must still answer
                         return self._send(400, {"error": f"invalid value: {error}"})
-                    config.update_module(module.id, valid)
-                    return self._send(200, {"values": valid})
+                    return self._send(200, self._config_payload(module))
                 group = self._split(path, "/api/device/", 1)
                 if group:
                     return self._put_device(group[0], body)
@@ -179,6 +202,24 @@ class WebServer:
                 self._send(404, {"error": "not found"})
 
             # -- payloads -----------------------------------------------------
+            @staticmethod
+            def _config_payload(module) -> dict:
+                """One module's config as the browser may see it.
+
+                Write-only fields (api keys) leave the panel, not the
+                browser: a stored value reads back as empty and the
+                `masked` list tells the page it is set and can be reset.
+                Both the GET and the PUT answer with this, so a save
+                cannot hand back the secret the GET just withheld.
+                """
+                spec = module.config_schema or {}
+                values = dict(config.namespace(module.id))
+                masked = [key for key, field in spec.items()
+                          if field.get("write_only") and values.get(key)]
+                for key in masked:
+                    values[key] = ""
+                return {"schema": spec, "values": values, "masked": masked}
+
             @staticmethod
             def _split(path: str, prefix: str, n: int):
                 if not path.startswith(prefix):
@@ -204,6 +245,47 @@ class WebServer:
                         for group in device.groups(config, registry)
                     ],
                 }
+
+            def _put_graph(self, body: dict) -> None:
+                """Move boston stations: apply {vertices: [{id, x, y}]} to
+                graph.json and tell the module to re-read it."""
+                moved = body.get("vertices")
+                if not isinstance(moved, list) or not moved:
+                    return self._send(400, {"error": "vertices must be a list"})
+                try:
+                    graph = json.loads(GRAPH_PATH.read_text())
+                except (OSError, ValueError):
+                    return self._send(500, {"error": "unreadable graph"})
+                if not isinstance(graph, dict):
+                    return self._send(500, {"error": "malformed graph"})
+                vertices = graph.get("vertices")
+                if not isinstance(vertices, list):
+                    return self._send(500, {"error": "malformed graph"})
+                known = {v.get("id"): v for v in vertices
+                         if isinstance(v, dict)}
+                try:
+                    for entry in moved:
+                        if not isinstance(entry, dict):
+                            raise TypeError(f"not a station: {entry!r}")
+                        vid = entry.get("id")
+                        if vid not in known:
+                            return self._send(
+                                400, {"error": f"unknown station {vid!r}"})
+                        x = float(entry.get("x"))
+                        y = float(entry.get("y"))
+                        if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+                            return self._send(
+                                400, {"error": "x/y must be within 0..1"})
+                        known[vid]["x"] = x
+                        known[vid]["y"] = y
+                except (TypeError, ValueError, AttributeError) as error:
+                    return self._send(
+                        400, {"error": f"invalid station entry: {error}"})
+                if not write_atomic(GRAPH_PATH,
+                                    json.dumps(graph, indent=2) + "\n"):
+                    return self._send(500, {"error": "could not write graph"})
+                actions.put(("boston", "reload"))  # main loop re-reads it
+                return self._send(200, {"ok": True})
 
             def _put_device(self, group_id: str, body: dict) -> None:
                 group = device.group_by_id(config, registry, group_id)

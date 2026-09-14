@@ -1,5 +1,7 @@
 """Module discovery and enabled/order bookkeeping."""
 
+import json
+
 from wintermode.registry import Registry, discover
 
 MODULE_SOURCE = '''
@@ -76,32 +78,33 @@ def test_discovery_accepts_an_instance(tmp_path):
 
 
 def test_registry_order_comes_from_config(config, fake_module):
-    registry = Registry([fake_module("clock"), fake_module("dummy"),
+    registry = Registry([fake_module("clock"), fake_module("boston"),
                          fake_module("settings")], config)
-    config.update({"modules": ["dummy", "clock"]})
+    config.update({"modules": ["boston", "clock"]})
     registry.refresh()
     # settings pinned first, then config order
     assert [m.id for m in registry.home_order()] == [
-        "settings", "dummy", "clock"]
+        "settings", "boston", "clock"]
 
 
 def test_registry_heals_the_modules_array(config, fake_module):
     config.update({"modules": ["ghost", "clock"]})
-    registry = Registry([fake_module("clock"), fake_module("dummy")], config)
+    registry = Registry([fake_module("clock"), fake_module("boston")], config)
     registry.refresh()
-    assert registry.enabled_ids() == ["clock", "dummy"]  # ghost dropped, dummy appended
-    assert config.data["modules"] == ["clock", "dummy"]
+    # ghost dropped, boston appended
+    assert registry.enabled_ids() == ["clock", "boston"]
+    assert config.data["modules"] == ["clock", "boston"]
 
 
 def test_registry_validates_module_namespaces(config, fake_module):
     module = fake_module(
-        "dummy",
+        "boston",
         config_schema={"count": {"type": "int", "min": 0, "max": 99,
                                  "default": 0}},
     )
-    config.update_module("dummy", {"count": 5000})  # out of bounds
+    config.update_module("boston", {"count": 5000})  # out of bounds
     Registry([module], config).validate_namespaces()
-    assert config.data["dummy"]["count"] == 99  # ints clamp, not fall back
+    assert config.data["boston"]["count"] == 99  # ints clamp, not fall back
 
 
 def test_registry_get_and_contains(config, fake_module):
@@ -114,4 +117,31 @@ def test_registry_get_and_contains(config, fake_module):
 
 def test_discovery_finds_the_real_skeleton_modules():
     found = discover()
-    assert [m.id for m in found] == ["clock", "dummy", "settings"]
+    assert [m.id for m in found] == ["boston", "clock", "settings"]
+
+
+def test_a_scalar_namespace_is_healed_instead_of_stopping_the_boot(
+        config, fake_module):
+    """`"boston": 5` is an ordinary hand-edit; it must cost that module's
+    settings, not the first frame of the day."""
+    config.update({"boston": 5})
+    module = fake_module("boston",
+                         config_schema={"count": {"type": "int", "default": 1}})
+    Registry([module], config).validate_namespaces()  # must not raise
+    assert config.data["boston"]["count"] == 1
+
+
+def test_healing_compares_against_the_file_it_writes(config, fake_module):
+    """A bad overlay value must not make the tracked file be rewritten on
+    every single boot."""
+    path = config.path
+    path.write_text(json.dumps({"clock": {"count": 1}}))
+    (path.parent / "config.local.json").write_text(
+        json.dumps({"clock": {"count": "not-an-int"}}))
+    module = fake_module("clock",
+                         config_schema={"count": {"type": "int", "default": 0}})
+    registry = Registry([module], config)
+    registry.validate_namespaces()
+    first = path.read_text()
+    registry.validate_namespaces()
+    assert path.read_text() == first  # the repair does not repeat

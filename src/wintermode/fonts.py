@@ -74,7 +74,7 @@ class Fonts:
         centring on it left the dash near the top of its button.
         """
         return self.textwidth(text, weight, size), self._ink_box(
-            text, weight, size)[3]
+            text, weight, size)[2]  # (top, bottom, height) -> height
 
     def center_y(self, text: str, weight: str, size: int, y0: float,
                  y1: float) -> float:

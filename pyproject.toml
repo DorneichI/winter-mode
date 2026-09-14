@@ -17,7 +17,7 @@ dependencies = [
     "Pillow>=9.1",
     # the shadow-diffing release: identical blits emit nothing, static
     # frames cost milliseconds
-    "ertftm070>=0.3.0",
+    "ertftm070>=0.3.1",
 ]
 dynamic = ["version"]
 
@@ -32,7 +32,8 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-wintermode = ["fonts/*.ttf", "fonts/LICENSE.txt", "web/static/*.html"]
+wintermode = ["fonts/*.ttf", "fonts/LICENSE.txt", "web/static/*.html",
+              "modules/*/*.json"]
 
 [tool.setuptools.dynamic]
 version = { attr = "wintermode.__version__" }

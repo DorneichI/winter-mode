@@ -2,10 +2,12 @@
   "theme": "dark",
   "modules": [
     "clock",
-    "dummy",
+    "boston",
     "settings"
   ],
-  "statusbar": {},
+  "statusbar": {
+    "boston": false
+  },
   "statusbar_rotate": 10,
   "display": {
     "mode": "always_on",
@@ -15,12 +17,11 @@
   },
   "clock": {
     "format24": true,
-    "show_seconds": false
+    "show_seconds": true
   },
-  "dummy": {
-    "flash": false,
-    "mode": "count",
-    "count": 0,
-    "greeting": "hello"
+  "boston": {
+    "address": "",
+    "mode": "transit",
+    "api_key": ""
   }
 }

@@ -27,10 +27,10 @@ def test_static_settings_card_when_no_settings_module(theme, fonts, ctx):
 
 
 def test_cards_for_every_enabled_module(theme, fonts, ctx, registry):
-    registry = registry(["clock", "dummy"])
+    registry = registry(["clock", "boston"])
     view, canvas, ctx = render_home(theme, fonts, ctx, registry=registry)
     cards = view._cards()
-    assert [label for label, _ in cards] == ["SETTINGS", "CLOCK", "DUMMY"]
+    assert [label for label, _ in cards] == ["SETTINGS", "CLOCK", "BOSTON"]
 
 
 def test_cards_are_bordered_and_inside_content(theme, fonts, ctx, registry):
@@ -155,6 +155,19 @@ def test_form_text_row_is_read_only(theme, fonts, ctx):
     # area is unconsumed
     assert view.on_tap(750, 180, c) is False
     assert writes == []
+
+
+def test_form_masks_write_only_values(theme, fonts, ctx):
+    # a stored secret never reaches the panel: it renders as "set"
+    c = ctx(registry=None)
+    schema = {"key": {"type": "text", "title": "Key", "default": "",
+                      "write_only": True}}
+    view = FormView("T", schema, lambda: {"key": "hunter2"},
+                    lambda key, value: None)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    (row,) = [r for r in view.rows(c) if r.key == "key"]
+    assert row.value == "set"
 
 
 def test_form_rows_fit_in_content(theme, fonts, ctx):
@@ -306,6 +319,123 @@ def test_list_view_is_a_reusable_primitive(theme, fonts, ctx):
     assert view.title == "DEMO"
 
 
+# --- ListView scroll mode ---------------------------------------------------
+
+
+def make_scroll_view(ctx, count):
+    from wintermode.views import ListView, Row
+
+    # int rows carry hitboxes; inert info rows would never reach _rows
+    rows = [Row(key=f"r{i}", label=f"row {i}", value=0, kind="int",
+                spec={"min": 0, "max": 3})
+            for i in range(count)]
+
+    class ScrollList(ListView):
+        scroll = True
+
+    return ScrollList("SCROLL", rows)
+
+
+def scroller_tap(view, ctx, direction):
+    rect = view._scroller[direction]
+    assert rect is not None, f"{direction} should be tappable"
+    assert view.on_tap((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2,
+                       ctx) is True
+
+
+def test_scroll_list_shows_only_down_button_at_top(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view = make_scroll_view(c, 15)  # 10 rows fit
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    assert view._scroller["down"] is not None
+    assert view._scroller["up"] is None
+    assert {key for _rect, key, _action in view._rows} == {
+        f"r{i}" for i in range(10)}  # 10 of 15 rows on screen
+
+
+def test_scroll_list_scrolls_one_row_per_tap(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view = make_scroll_view(c, 15)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    scroller_tap(view, c, "down")
+    view.render(draw, c)  # the loop re-renders after a consumed tap
+    assert view._offset == 1
+    assert {key for _rect, key, _action in view._rows} == {
+        f"r{i}" for i in range(1, 11)}
+
+
+def test_scroll_list_up_button_inert_at_top(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view = make_scroll_view(c, 15)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    # a tap where the up button would sit is unconsumed at the top
+    assert view._scroller["up"] is None
+
+
+def test_scroll_list_ends_with_only_up_button(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view = make_scroll_view(c, 15)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    for _ in range(5):
+        scroller_tap(view, c, "down")
+        view.render(draw, c)
+    assert view._offset == 5  # 15 rows - 10 visible
+    assert view._scroller["down"] is None
+    assert view._scroller["up"] is not None
+    assert {key for _rect, key, _action in view._rows} == {
+        f"r{i}" for i in range(5, 15)}  # the tail is on screen
+
+
+def test_scroll_list_without_overflow_has_no_buttons(theme, fonts, ctx):
+    c = ctx(registry=None)
+    view = make_scroll_view(c, 3)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    assert view._scroller == {"up": None, "down": None}
+    # nothing in the scroller strip consumes a tap
+    assert view.on_tap(400, 470, c) is False
+
+
+def test_scroll_list_clamps_offset_before_slicing(theme, fonts, ctx):
+    # a list that shrank under a stale offset must not render past its end
+    c = ctx(registry=None)
+    view = make_scroll_view(c, 15)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    view._offset = 9  # as if rows vanished while scrolled down
+    from wintermode.views import Row
+
+    view._rows_fn = lambda _ctx: [Row("r0", "row 0", kind="info")]
+    view.render(draw, c)
+    assert view._offset == 0
+    assert view._scroller == {"up": None, "down": None}
+
+
+def test_scroll_list_rows_still_fire_actions(theme, fonts, ctx):
+    from wintermode.views import ListView, Row
+
+    rows = [Row(key="a", label="Alpha", value=1, kind="int",
+                spec={"min": 0, "max": 3})]
+
+    class ScrollList(ListView):
+        scroll = True
+
+    writes = []
+    view = ScrollList("S", rows, on_change=lambda row, value, c:
+                      writes.append((row.key, value)))
+    c = ctx(registry=None)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    plus = next(r for r, k, a in view._rows if a == "plus")
+    assert view.on_tap((plus[0] + plus[2]) // 2, (plus[1] + plus[3]) // 2,
+                       c) is True
+    assert writes == [("a", 2)]
+
+
 def test_picker_picks_and_pops(theme, fonts, ctx):
     from wintermode.views import PickerView
 
@@ -384,3 +514,39 @@ def test_the_stepper_value_and_buttons_share_a_centre(theme, fonts, ctx):
         ("value", range(minus[2] + 2, plus[0] - 2)),
     ):
         assert abs(ink_centre(x_range) - band_centre) <= 2.5, label
+
+
+def test_a_secret_row_ignores_its_stepper(theme, fonts, ctx, config):
+    """A write_only row draws as "set", so a stepper's value is not the
+    value it would write — the tap must do nothing, not crash."""
+    spec = {"pin": {"type": "int", "title": "Pin", "default": 0, "max": 99,
+                    "write_only": True}}
+    config.update({"door": {"pin": 42}})
+    view = FormView("DOOR", spec,
+                    lambda: {"pin": config.namespace("door").get("pin")},
+                    lambda key, value: config.update_module(
+                        "door", {key: value}, spec))
+    c = ctx(registry=None)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    _rect, key, action = next(r for r in view._rows if r[2] == "plus")
+    view.on_tap((_rect[0] + _rect[2]) // 2, (_rect[1] + _rect[3]) // 2, c)
+    assert config.namespace("door")["pin"] == 42  # untouched
+
+
+def test_a_scrolling_info_page_uses_its_scroller(theme, fonts, ctx):
+    """InfoView inherits the scroll path: with scroll on, the [▼] it
+    draws is the control that moves it."""
+
+    class Long(InfoView):
+        scroll = True
+
+    c = ctx(registry=None)
+    view = Long("LONG", [(f"row {i}", lambda i=i: str(i)) for i in range(15)])
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    rect = view._scroller["down"]
+    assert rect is not None
+    assert view.on_tap((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2,
+                       c) is True
+    assert view._offset == 1

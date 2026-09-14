@@ -86,11 +86,13 @@ class Settings(CardGrid):
             self._module_views[module.id] = FormView(
                 module.title, module.config_schema,
                 lambda m=module: {
-                    key: config.data.get(m.id, {}).get(key)
+                    key: config.namespace(m.id).get(key)
                     for key in m.config_schema
                 },
+                # the spec is what routes a local (secret) field to the
+                # overlay and clamps the rest — never write without it
                 lambda key, value, m=module: config.update_module(
-                    m.id, {key: value}),
+                    m.id, {key: value}, m.config_schema),
             )
         return self._module_views[module.id]
 
