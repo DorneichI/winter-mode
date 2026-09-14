@@ -26,6 +26,10 @@ MODES = {
     "car": "driving",
 }
 
+# a body that is not the response we asked for: unparseable, or valid
+# JSON of the wrong shape (captive portal, proxy error page, truncation)
+_UNREADABLE = "unreadable response from google maps"
+
 # the status field of a non-OK response -> panel-friendly message
 _STATUS_MESSAGES = {
     "ZERO_RESULTS": "no route found to that station",
@@ -123,11 +127,16 @@ def directions(origin: str, dest_lat: float, dest_lon: float, mode: str,
     try:
         data = json.loads(body)
     except (ValueError, TypeError):
-        raise GoogleError("unreadable response from google maps") from None
+        raise GoogleError(_UNREADABLE) from None
+    if not isinstance(data, dict):
+        raise GoogleError(_UNREADABLE)
     status = data.get("status", "UNKNOWN_ERROR")
     if status != "OK":
         raise GoogleError(_STATUS_MESSAGES.get(status, "google error"))
-    return [_parse_route(route) for route in data.get("routes", [])]
+    routes = data.get("routes") or []
+    if not isinstance(routes, list):
+        raise GoogleError(_UNREADABLE)
+    return [_parse_route(route) for route in routes]
 
 
 def _strip_html(markup) -> str:

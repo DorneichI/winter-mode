@@ -514,3 +514,39 @@ def test_the_stepper_value_and_buttons_share_a_centre(theme, fonts, ctx):
         ("value", range(minus[2] + 2, plus[0] - 2)),
     ):
         assert abs(ink_centre(x_range) - band_centre) <= 2.5, label
+
+
+def test_a_secret_row_ignores_its_stepper(theme, fonts, ctx, config):
+    """A write_only row draws as "set", so a stepper's value is not the
+    value it would write — the tap must do nothing, not crash."""
+    spec = {"pin": {"type": "int", "title": "Pin", "default": 0, "max": 99,
+                    "write_only": True}}
+    config.update({"door": {"pin": 42}})
+    view = FormView("DOOR", spec,
+                    lambda: {"pin": config.namespace("door").get("pin")},
+                    lambda key, value: config.update_module(
+                        "door", {key: value}, spec))
+    c = ctx(registry=None)
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    _rect, key, action = next(r for r in view._rows if r[2] == "plus")
+    view.on_tap((_rect[0] + _rect[2]) // 2, (_rect[1] + _rect[3]) // 2, c)
+    assert config.namespace("door")["pin"] == 42  # untouched
+
+
+def test_a_scrolling_info_page_uses_its_scroller(theme, fonts, ctx):
+    """InfoView inherits the scroll path: with scroll on, the [▼] it
+    draws is the control that moves it."""
+
+    class Long(InfoView):
+        scroll = True
+
+    c = ctx(registry=None)
+    view = Long("LONG", [(f"row {i}", lambda i=i: str(i)) for i in range(15)])
+    canvas, draw = make_canvas(theme)
+    view.render(draw, c)
+    rect = view._scroller["down"]
+    assert rect is not None
+    assert view.on_tap((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2,
+                       c) is True
+    assert view._offset == 1

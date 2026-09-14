@@ -433,6 +433,12 @@ class ListView(PagedMixin):
                 self.on_select(row, ctx)
             return True
         spec = row.spec or {}
+        if spec.get("write_only"):
+            # a secret is never edited from the panel: the row draws as
+            # "set", so the value a stepper would step is not the value
+            # it would write (see FormView._fields).  The web form is
+            # where a secret is set and reset.
+            return False
         if action == "toggle":
             new = toggle_bool(spec, value)
         elif action == "cycle":
@@ -612,4 +618,8 @@ class InfoView(ListView):
                 for label, value_fn in self.entries]
 
     def on_tap(self, x: int, y: int, ctx: Ctx) -> bool:
+        # same tail as ListView: a scrolling info page is driven by its
+        # own [▲]/[▼], and its paginator is not drawn
+        if self.scroll:
+            return self._tap_scroller(x, y)
         return self._tap_paginator(x, y)

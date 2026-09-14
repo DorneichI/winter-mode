@@ -238,3 +238,23 @@ def test_reported_web_url_uses_the_bound_port(web):
     _server, _actions, _config, _registry, port = web
     _status, device = request("GET", port, "/api/device")
     assert device["network"]["web_url"].endswith(f":{port}")
+
+
+def test_put_never_hands_back_the_secret_the_get_withheld(web):
+    """One contract, one answer: the save that stores a secret must not
+    serve it back to the browser the GET just blanked."""
+    _server, _actions, _config, _registry, port = web
+    request("PUT", port, "/api/modules/boston/config", {"secret": "hunter2"})
+    status, payload = request("PUT", port, "/api/modules/boston/config",
+                              {"secret": "hunter2"})
+    assert status == 200
+    assert payload["values"]["secret"] == ""
+    assert payload["masked"] == ["secret"]  # the form can still reset it
+
+
+def test_a_page_that_is_not_bundled_is_a_404_not_a_dead_socket(web):
+    """/map is served from static/, and a missing page must still be an
+    HTTP answer the browser can show."""
+    _server, _actions, _config, _registry, port = web
+    assert request("GET", port, "/map")[0] == 404
+    assert request("GET", port, "/")[0] == 200  # the server is still up

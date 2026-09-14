@@ -99,13 +99,28 @@ class Boston:
 
     # --- graph -------------------------------------------------------------
 
-    def _load_graph(self) -> None:
+    def _read_graph(self) -> tuple[dict, list]:
+        """Parse graph.json into (stations, edges), skipping bad entries.
+
+        A bad file yields an empty map rather than an exception: this
+        runs at import time, and a traceback here would take the whole
+        module off the grid.
+        """
+        stations: dict[str, dict] = {}
+        edges: list[tuple] = []
         try:
             raw = json.loads(GRAPH_PATH.read_text())
         except (OSError, ValueError):
             log.exception("boston: unreadable graph %s", GRAPH_PATH)
-            return
-        for entry in raw.get("vertices", []):
+            return stations, edges
+        if not isinstance(raw, dict):
+            log.error("boston: graph %s is not an object", GRAPH_PATH)
+            return stations, edges
+        vertices = raw.get("vertices")
+        if not isinstance(vertices, list):
+            log.error("boston: graph %s has no vertices list", GRAPH_PATH)
+            return stations, edges
+        for entry in vertices:
             try:
                 vid = str(entry["id"])
                 station = {
@@ -119,19 +134,28 @@ class Boston:
             except (KeyError, TypeError, ValueError):
                 log.warning("boston: skipping bad vertex %r", entry)
                 continue
-            self._stations[vid] = station
-        for edge in raw.get("edges", []):
-            a = self._stations.get(edge.get("a"))
-            b = self._stations.get(edge.get("b"))
+            stations[vid] = station
+        for edge in raw.get("edges") or []:
+            try:
+                a = stations.get(edge["a"])
+                b = stations.get(edge["b"])
+                colors = [c for c in edge.get("colors", [])
+                          if c in LINE_COLORS]
+            except (TypeError, AttributeError):
+                log.warning("boston: skipping bad edge %r", edge)
+                continue
             if a is None or b is None or a is b:
                 log.warning("boston: skipping edge with unknown endpoint %r",
                             edge)
                 continue
-            colors = [c for c in edge.get("colors", []) if c in LINE_COLORS]
             if not colors:
                 log.warning("boston: skipping edge without colors %r", edge)
                 continue
-            self._edges.append((a, b, colors))
+            edges.append((a, b, colors))
+        return stations, edges
+
+    def _load_graph(self) -> None:
+        self._stations, self._edges = self._read_graph()
 
     # --- map ---------------------------------------------------------------
 
@@ -200,7 +224,7 @@ class Boston:
 
     def _start_trip(self, vid: str, ctx: Ctx) -> bool:
         self._abandon()
-        data = ctx.config.data.get("boston", {})
+        data = ctx.config.namespace("boston")
         address = (data.get("address") or "").strip()
         api_key = (data.get("api_key") or "").strip()
         mode = data.get("mode", "transit")
@@ -231,7 +255,7 @@ class Boston:
 
     def _restart(self, ctx: Ctx, station: dict, mode: str) -> int:
         """Start a query with the current config; returns its seq."""
-        data = ctx.config.data.get("boston", {})
+        data = ctx.config.namespace("boston")
         address = (data.get("address") or "").strip()
         api_key = (data.get("api_key") or "").strip()
         self._seq += 1
@@ -266,7 +290,7 @@ class Boston:
     # --- module contract -----------------------------------------------------
 
     def status_items(self, ctx: Ctx) -> list[BarItem]:
-        address = (ctx.config.data.get("boston", {}).get("address") or ""
+        address = (ctx.config.namespace("boston").get("address") or ""
                    ).strip()
         if not address:
             return [BarItem("no address set")]
@@ -278,10 +302,15 @@ class Boston:
             self._abandon()  # the alert notices the seq moved and pops
         elif action_id == "reload":
             # the /map page moved stations: re-read graph.json and make
-            # the next frame repaint the map
-            self._stations = {}
-            self._edges = []
-            self._load_graph()
+            # the next frame repaint the map.  The new map is built first:
+            # a reload that cannot read the file must not leave the panel
+            # with nothing to draw.
+            stations, edges = self._read_graph()
+            if not stations:
+                log.error("boston: reload found no stations in %s — keeping"
+                          " the map on screen", GRAPH_PATH)
+                return
+            self._stations, self._edges = stations, edges
             ctx.nav.changed = True
 
 
@@ -295,7 +324,17 @@ class TripAlert:
     """
 
     title = "TRIP"
-    interval = 1
+
+    @property
+    def interval(self) -> int:
+        """Tick only while a query can still land.
+
+        `confirm` waits on the query that started with the dialog, so a
+        result or an error appears without another tap; `results` and
+        `error` are static, and re-rendering them once a second would
+        repaint an identical frame forever.
+        """
+        return 1 if self._state in ("confirm", "computing") else 0
 
     def __init__(self, module: Boston, station: dict, address: str,
                  mode: str, seq: int, error: str | None = None) -> None:

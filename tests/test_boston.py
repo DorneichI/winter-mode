@@ -3,6 +3,7 @@
 import json
 import math
 import threading
+import time
 
 import pytest
 from PIL import Image, ImageDraw
@@ -46,6 +47,18 @@ def trips_fetch():
                 raise GoogleError(self.error)
             return list(self.trips)
 
+        def wait_for_calls(self, count, timeout=5.0):
+            """Block until `count` calls have landed.
+
+            The query runs on a background thread, so a test that reads
+            `calls` straight after a tap would otherwise be asserting
+            only that the worker was scheduled first.
+            """
+            deadline = time.monotonic() + timeout
+            while len(self.calls) < count and time.monotonic() < deadline:
+                time.sleep(0.005)
+            return len(self.calls)
+
     return FakeFetch
 
 
@@ -88,6 +101,20 @@ def tap_footer(alert, action, ctx):
 def render(view, ctx):
     _, draw = canvas()
     view.render(draw, ctx)
+
+
+def wait_for(predicate, view, ctx, timeout=5.0):
+    """Render until `predicate` holds (or give up after `timeout`).
+
+    A query result crosses a thread boundary and only reaches the view
+    when a frame drains it, so a test asserting on it must keep
+    rendering — one render is not a synchronisation point.
+    """
+    deadline = time.monotonic() + timeout
+    while not predicate() and time.monotonic() < deadline:
+        render(view, ctx)
+        time.sleep(0.005)
+    return predicate()
 
 
 # --- graph -------------------------------------------------------------------
@@ -175,7 +202,8 @@ def test_station_tap_pushes_confirm_alert(boston, trips_fetch, theme, fonts,
     assert isinstance(alert, TripAlert)
     assert alert._state == "confirm"
     assert alert._mode == "transit"
-    assert fetch.calls and fetch.calls[0]["lat"] == pytest.approx(42.356395)
+    fetch.wait_for_calls(1)
+    assert fetch.calls[0]["lat"] == pytest.approx(42.356395)
 
 
 def test_tap_picks_nearest_station_not_first_hitbox(boston, trips_fetch,
@@ -196,6 +224,7 @@ def test_tap_picks_nearest_station_not_first_hitbox(boston, trips_fetch,
     # three quarters of the way from charles to park: park is nearest
     tx, ty = int((3 * px + nx) / 4), int((3 * py + ny) / 4)
     assert boston.on_tap(tx, ty, c) is True
+    fetch.wait_for_calls(1)
     assert fetch.calls[0]["lat"] == pytest.approx(42.356395)
 
 
@@ -246,10 +275,10 @@ def test_ok_with_unchanged_mode_waits_for_inflight_query(
     render(alert, c)
     tap_footer(alert, "ok", c)
     assert alert._state == "computing"
+    fetch.wait_for_calls(1)
     assert len(fetch.calls) == 1  # no re-query: mode unchanged
     fetch.release.set()  # the result arrives now
-    render(alert, c)
-    assert alert._state == "results"
+    assert wait_for(lambda: alert._state == "results", alert, c)
     assert len(alert._trips) == 1
 
 
@@ -269,9 +298,9 @@ def test_ok_with_changed_mode_requeries(
     assert alert._mode == "walk"
     tap_footer(alert, "ok", c)
     assert alert._state == "computing"
+    fetch.wait_for_calls(2)
     assert [call["mode"] for call in fetch.calls] == ["transit", "walk"]
-    render(alert, c)
-    assert alert._state == "results"  # the walk query answered
+    assert wait_for(lambda: alert._state == "results", alert, c)  # walk landed
 
 
 def test_cancel_abandons_and_stale_result_is_dropped(
@@ -477,3 +506,45 @@ def test_module_contract_is_complete(boston):
 
 def test_fmt_clock_imported_for_rows():
     assert google.fmt_clock(1_750_001_560) != ""
+
+
+def test_reload_keeps_the_map_when_the_graph_is_unreadable(
+        boston, tmp_path, monkeypatch, theme, fonts, ctx, config):
+    """A reload that cannot read the file must not leave the panel with
+    nothing to draw."""
+    before = len(boston._stations)
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ truncated")
+    monkeypatch.setattr(boston_mod, "GRAPH_PATH", bad)
+    c = make_ctx(ctx, config)
+    boston.on_action("reload", c)
+    assert len(boston._stations) == before == 118
+    assert len(boston._edges) == 119
+
+
+def test_a_malformed_edge_list_is_skipped_not_fatal(boston, tmp_path,
+                                                   monkeypatch):
+    """Edges are read from a data file: a non-object entry is a skipped
+    edge, not an exception on the import path."""
+    good = tmp_path / "edges.json"
+    good.write_text(json.dumps({
+        "vertices": [{"id": "a", "name": "A", "x": 0.5, "y": 0.5,
+                      "lat": 42.0, "lon": -71.0}],
+        "edges": ["oops", {"a": "a", "b": "a", "colors": ["red"]}],
+    }))
+    monkeypatch.setattr(boston_mod, "GRAPH_PATH", good)
+    stations, edges = Boston()._read_graph()
+    assert set(stations) == {"a"} and edges == []
+
+
+def test_the_trip_dialog_ticks_only_while_a_query_can_land():
+    """interval=1 is what picks up the answer; the static states must not
+    repaint an identical frame every second."""
+    alert = TripAlert.__new__(TripAlert)
+    alert._state = "computing"
+    assert alert.interval == 1  # the result has to be noticed
+    alert._state = "confirm"
+    assert alert.interval == 1  # an early error still has to surface
+    for state in ("results", "error"):
+        alert._state = state
+        assert alert.interval == 0

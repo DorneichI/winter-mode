@@ -53,6 +53,7 @@ def discover(base: Path = MODULES_DIR) -> list[Any]:
         if not module_path.is_file():
             log.warning("registry: %s has no module.py", entry.name)
             continue
+        spec = None
         try:
             spec = importlib.util.spec_from_file_location(
                 f"wintermode.modules.{entry.name}.module", module_path
@@ -65,6 +66,9 @@ def discover(base: Path = MODULES_DIR) -> list[Any]:
             spec.loader.exec_module(imported)
             module_obj = getattr(imported, "MODULE", None)
         except Exception:
+            # a module whose body raised is half-initialised: leave nothing
+            # in sys.modules, or the next import of that name gets the wreck
+            sys.modules.pop(getattr(spec, "name", ""), None)
             log.exception("registry: failed to import module %s", entry.name)
             continue
         if module_obj is None or not _looks_like_module(module_obj):
@@ -135,26 +139,28 @@ class Registry:
         """Run every module's config_schema over its config namespace.
 
         Healing writes back what changed, but local (secret) fields go
-        to the overlay — the tracked file never receives them.
+        to the overlay — the tracked file never receives them.  Each side
+        is compared against the file it is written to, so a repair is not
+        shadowed by the other file (and is not re-written every boot).
         """
         patches = {}
         local_patches = {}
         for module in self._all.values():
             if not module.config_schema:
                 continue
-            current = self.config.data.get(module.id, {})
-            valid = schema.validate(module.config_schema, current)
-            if valid == current:
-                continue
+            base = self.config.namespace(module.id)
+            overlay = self.config.namespace(module.id, local=True)
+            valid = schema.validate(module.config_schema, {**base, **overlay})
             local_fields = {key: valid[key] for key, field in
                             module.config_schema.items()
-                            if key in valid and field.get("local")}
+                            if key in valid and field.get("local")
+                            and (key in base or key in overlay)}
             normal = {key: value for key, value in valid.items()
                       if key not in local_fields}
-            if normal != {key: current.get(key) for key in normal}:
+            if normal != {key: base.get(key) for key in normal}:
                 patches[module.id] = normal
-            if local_fields != {key: current.get(key)
-                                for key in local_fields}:
+            if local_fields and local_fields != {key: overlay.get(key)
+                                                 for key in local_fields}:
                 local_patches[module.id] = local_fields
         if patches:
             self.config.update(patches)

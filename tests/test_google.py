@@ -255,6 +255,26 @@ def test_directions_unparseable_body_is_descriptive():
     assert "unreadable" in caught.value.message
 
 
+@pytest.mark.parametrize("body", [b"[]", b"null", b'"maintenance"',
+                                  b'{"status": "OK", "routes": 5}'])
+def test_directions_wrong_shape_body_is_descriptive(body):
+    """Valid JSON of the wrong shape — a captive portal or a proxy error
+    page — must fail as readably as a body that will not parse."""
+    with pytest.raises(GoogleError) as caught:
+        directions("a", 1, 2, "transit", "K", 0,
+                   fetch=lambda url, timeout: FakeResponse(body))
+    assert "unreadable" in caught.value.message
+
+
+def test_directions_null_routes_is_an_empty_result():
+    """`routes: null` with an OK status is no itinerary, not a crash:
+    the panel turns an empty list into "no route found"."""
+    trips = directions("a", 1, 2, "transit", "K", 0,
+                       fetch=lambda url, timeout: FakeResponse(
+                           b'{"status": "OK", "routes": null}'))
+    assert trips == []
+
+
 def test_fmt_helpers():
     assert fmt_minutes(90) == "2 min"  # rounds, floors at 1
     assert fmt_minutes(10) == "1 min"
