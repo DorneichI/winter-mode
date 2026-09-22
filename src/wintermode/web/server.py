@@ -19,11 +19,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from wintermode import __version__, device, schema
-from wintermode.config import write_atomic
+from wintermode import device, schema
 from wintermode.fonts import FONTS_DIR
 from wintermode.net import DEFAULT_WEB_PORT, ipv4, web_url
 from wintermode.theme import effective_theme
+from wintermode.version import read_deployed_version
 
 log = logging.getLogger(__name__)
 
@@ -37,10 +37,6 @@ FONT_FILES = {
     "3270-Regular.ttf": FONTS_DIR / "3270-Regular.ttf",
     "3270SemiCondensed-Regular.ttf": FONTS_DIR / "3270SemiCondensed-Regular.ttf",
 }
-
-# the boston map graph, edited by the /map arrangement page
-GRAPH_PATH = Path(__file__).resolve().parent.parent / "modules" / "boston" / \
-    "graph.json"
 
 
 def _static_page(name: str) -> bytes | None:
@@ -116,9 +112,8 @@ class WebServer:
             # -- GET ---------------------------------------------------------
             def do_GET(self) -> None:
                 path = urlparse(self.path).path
-                if path in ("/", "/map"):
-                    page = _static_page(
-                        "index.html" if path == "/" else "map.html")
+                if path == "/":
+                    page = _static_page("index.html")
                     if page is None:
                         return self._send(404, {"error": "no such page"})
                     return self._send(200, page, "text/html; charset=utf-8")
@@ -129,12 +124,6 @@ class WebServer:
                         return self._send(200, font_path.read_bytes(),
                                           "font/ttf")
                     return self._send(404, {"error": "unknown font"})
-                if path == "/api/boston/graph":
-                    try:
-                        data = json.loads(GRAPH_PATH.read_text())
-                    except (OSError, ValueError):
-                        return self._send(500, {"error": "unreadable graph"})
-                    return self._send(200, data)
                 if path == "/api/modules":
                     payload = [{
                         "id": module.id, "title": module.title,
@@ -159,8 +148,6 @@ class WebServer:
                 body = self._json_body()
                 if body is None:
                     return self._send(400, {"error": "expected a JSON object"})
-                if path == "/api/boston/graph":
-                    return self._put_graph(body)
                 parts = self._split(path, "/api/modules/", 2)
                 if parts and parts[1] == "config":
                     module = self._module(parts[0])
@@ -238,54 +225,13 @@ class WebServer:
                         "ipv4": ip,
                         "web_url": web_url(port),
                     },
-                    "version": __version__,
+                    "version": read_deployed_version(config.path),
                     "groups": [
                         {"id": group.id, "title": group.title,
                          "schema": group.schema, "values": group.read()}
                         for group in device.groups(config, registry)
                     ],
                 }
-
-            def _put_graph(self, body: dict) -> None:
-                """Move boston stations: apply {vertices: [{id, x, y}]} to
-                graph.json and tell the module to re-read it."""
-                moved = body.get("vertices")
-                if not isinstance(moved, list) or not moved:
-                    return self._send(400, {"error": "vertices must be a list"})
-                try:
-                    graph = json.loads(GRAPH_PATH.read_text())
-                except (OSError, ValueError):
-                    return self._send(500, {"error": "unreadable graph"})
-                if not isinstance(graph, dict):
-                    return self._send(500, {"error": "malformed graph"})
-                vertices = graph.get("vertices")
-                if not isinstance(vertices, list):
-                    return self._send(500, {"error": "malformed graph"})
-                known = {v.get("id"): v for v in vertices
-                         if isinstance(v, dict)}
-                try:
-                    for entry in moved:
-                        if not isinstance(entry, dict):
-                            raise TypeError(f"not a station: {entry!r}")
-                        vid = entry.get("id")
-                        if vid not in known:
-                            return self._send(
-                                400, {"error": f"unknown station {vid!r}"})
-                        x = float(entry.get("x"))
-                        y = float(entry.get("y"))
-                        if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
-                            return self._send(
-                                400, {"error": "x/y must be within 0..1"})
-                        known[vid]["x"] = x
-                        known[vid]["y"] = y
-                except (TypeError, ValueError, AttributeError) as error:
-                    return self._send(
-                        400, {"error": f"invalid station entry: {error}"})
-                if not write_atomic(GRAPH_PATH,
-                                    json.dumps(graph, indent=2) + "\n"):
-                    return self._send(500, {"error": "could not write graph"})
-                actions.put(("boston", "reload"))  # main loop re-reads it
-                return self._send(200, {"ok": True})
 
             def _put_device(self, group_id: str, body: dict) -> None:
                 group = device.group_by_id(config, registry, group_id)

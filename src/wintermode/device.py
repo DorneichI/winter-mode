@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from wintermode import schema
-from wintermode.config import DISPLAY_PAGE_SCHEMA, THEME_SCHEMA
+from wintermode.config import DISPLAY_PAGE_SCHEMA, THEME_SCHEMA, UPDATES_SCHEMA
 
 # the status-bar rotation interval lives in this key, not in the
 # per-module statusbar map (it is a number, not a toggle)
@@ -111,9 +111,31 @@ def theme_group(config) -> DeviceGroup:
     return DeviceGroup("theme", "THEME", THEME_SCHEMA, values, apply)
 
 
+def updates_group(config) -> DeviceGroup:
+    """The auto-update toggle: reads/applies the root "updates" key.
+
+    The boot updater reads config.json raw (it cannot import wintermode),
+    so this group and UPDATES_SCHEMA are the only writer of the key —
+    and "updates" is in config.RESERVED, so no module namespace can
+    ever shadow it.
+    """
+    def values() -> dict:
+        namespace = config.data.get("updates")
+        if not isinstance(namespace, dict):
+            namespace = {}
+        return {"auto": bool(namespace.get("auto", True))}
+
+    def apply(patch: dict) -> None:
+        clean = schema.validate_strict(UPDATES_SCHEMA, patch)
+        config.update({"updates": clean})  # deep-merge: extra keys survive
+
+    return DeviceGroup("updates", "UPDATES", UPDATES_SCHEMA, values, apply)
+
+
 def groups(config, registry) -> list[DeviceGroup]:
     """The device pages, in the order both UIs show them."""
-    return [display_group(config), statusbar_group(config, registry)]
+    return [display_group(config), statusbar_group(config, registry),
+            updates_group(config)]
 
 
 def group_by_id(config, registry, group_id: str) -> DeviceGroup | None:

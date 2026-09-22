@@ -501,25 +501,11 @@ def test_module_contract_is_complete(boston):
     assert boston.id == "boston"
     assert boston.title == "BOSTON"
     assert boston.interval == 0
-    assert [a["id"] for a in boston.actions] == ["abandon", "reload"]
+    assert [a["id"] for a in boston.actions] == ["abandon"]
 
 
 def test_fmt_clock_imported_for_rows():
     assert google.fmt_clock(1_750_001_560) != ""
-
-
-def test_reload_keeps_the_map_when_the_graph_is_unreadable(
-        boston, tmp_path, monkeypatch, theme, fonts, ctx, config):
-    """A reload that cannot read the file must not leave the panel with
-    nothing to draw."""
-    before = len(boston._stations)
-    bad = tmp_path / "bad.json"
-    bad.write_text("{ truncated")
-    monkeypatch.setattr(boston_mod, "GRAPH_PATH", bad)
-    c = make_ctx(ctx, config)
-    boston.on_action("reload", c)
-    assert len(boston._stations) == before == 118
-    assert len(boston._edges) == 119
 
 
 def test_a_malformed_edge_list_is_skipped_not_fatal(boston, tmp_path,

@@ -16,5 +16,20 @@ jobs:
           # Bookworm ships on the Pi Zero W.
           python-version: "3.11"
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests
+      - run: ruff check src tests deploy
       - run: pytest -q
+
+  pi-install:
+    name: pi install (editable) on py3.11
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.11" }
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install --only-binary :all: --no-binary ertftm070 -e .
+      # the checkout IS the install: run from outside it so cwd cannot help
+      - run: |
+          cd /tmp
+          "$GITHUB_WORKSPACE/.venv/bin/python" -c "import os, wintermode; f = os.path.realpath(wintermode.__file__); print(f); assert f.startswith(os.environ['GITHUB_WORKSPACE'] + '/src/'), f"
+      - run: .venv/bin/python -m wintermode --help

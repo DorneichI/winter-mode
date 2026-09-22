@@ -20,7 +20,6 @@ from pathlib import Path
 from ertftm070 import Display, Touch
 from PIL import Image, ImageDraw
 
-from wintermode import __version__
 from wintermode.boot import play_boot
 from wintermode.config import Config
 from wintermode.context import Ctx, Nav
@@ -28,6 +27,7 @@ from wintermode.fonts import SIZE_BAR, Fonts
 from wintermode.registry import Registry, discover
 from wintermode.taps import TapTracker
 from wintermode.theme import Theme, effective_theme
+from wintermode.version import read_deployed_version
 from wintermode.views import HomeView
 
 log = logging.getLogger(__name__)
@@ -381,7 +381,7 @@ def main() -> None:
         server.start()
         # whatever port the kernel actually gave us (0 = ephemeral)
         app.web_port = server.port
-        play_boot(lcd, theme, fonts, __version__)
+        play_boot(lcd, theme, fonts, read_deployed_version(config.path))
         app.run()
 
 

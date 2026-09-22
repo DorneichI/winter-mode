@@ -84,8 +84,7 @@ class Boston:
     title = "BOSTON"
     interval = 0
     config_schema = SCHEMA
-    actions = [{"id": "abandon", "title": "Abandon trip"},
-               {"id": "reload", "title": "Reload map"}]
+    actions = [{"id": "abandon", "title": "Abandon trip"}]
 
     def __init__(self) -> None:
         self._stations: dict[str, dict] = {}
@@ -300,18 +299,6 @@ class Boston:
     def on_action(self, action_id: str, ctx: Ctx) -> None:
         if action_id == "abandon":
             self._abandon()  # the alert notices the seq moved and pops
-        elif action_id == "reload":
-            # the /map page moved stations: re-read graph.json and make
-            # the next frame repaint the map.  The new map is built first:
-            # a reload that cannot read the file must not leave the panel
-            # with nothing to draw.
-            stations, edges = self._read_graph()
-            if not stations:
-                log.error("boston: reload found no stations in %s — keeping"
-                          " the map on screen", GRAPH_PATH)
-                return
-            self._stations, self._edges = stations, edges
-            ctx.nav.changed = True
 
 
 class TripAlert:

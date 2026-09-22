@@ -1,13 +1,19 @@
 # winter-mode kitchen dashboard (ER-TFTM070-4)
 #
-# Install: copy to /etc/systemd/system/, then
-#   sudo systemctl enable --now wintermode
+# Install: copy to /etc/systemd/system/ alongside wintermode-update.service,
+# then
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable wintermode-update wintermode
 # The display turns on at boot; the web UI comes up with the network.
 
 [Unit]
 Description=wintermode kitchen dashboard (ER-TFTM070-4)
-After=network-online.target
+After=network-online.target wintermode-update.service
 Wants=network-online.target
+# ordering ONLY (no Requires/Wants of the updater): a failed or skipped
+# update must never keep the dashboard down.  A restart of this unit does
+# NOT re-run the updater — that is what keeps crash-restarts from
+# re-pulling.
 
 [Service]
 Type=simple
@@ -16,8 +22,15 @@ Type=simple
 User=winter
 WorkingDirectory=/opt/winter-mode
 ExecStart=/opt/winter-mode/.venv/bin/python -m wintermode --config /etc/wintermode/config.json
+# after the web server is up: 200 on /api/device = healthy.  Unhealthy with
+# a different LKG -> reset --hard to it and exit 1, so Restart=always brings
+# the dashboard back on the old code.  No polkit, no systemctl from here.
+ExecStartPost=/usr/bin/python3 /opt/winter-mode/deploy/healthcheck.py --repo /opt/winter-mode --config /etc/wintermode/config.json
 Restart=always
 RestartSec=5
+# ExecStartPost is covered by TimeoutStartSec; a rollback may run a venv
+# resync (the default 90s would kill it)
+TimeoutStartSec=1200
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

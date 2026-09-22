@@ -7,6 +7,11 @@ driver's FakeBus. Nothing in this file needs a Raspberry Pi.
 
 from __future__ import annotations
 
+import os
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 from ertftm070.touch import EVENT_DOWN, TouchPoint
 from PIL import Image
@@ -14,6 +19,37 @@ from PIL import Image
 from wintermode.app import WinterApp
 from wintermode.fonts import Fonts
 from wintermode.theme import resolve
+
+# --- hermetic git repos for the updater tests --------------------------------
+# Real git subprocesses in tmp dirs, no user/system config: the updater's
+# behaviour is exercised against the real tool it shells out to.
+
+GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@e",
+       "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"]
+
+
+def run_git(cwd: Path, *args: str, check: bool = True) -> str:
+    env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1"}
+    result = subprocess.run([*GIT, *args], cwd=cwd, capture_output=True,
+                            text=True, env=env, check=False)
+    if check and result.returncode != 0:
+        raise AssertionError(f"git {' '.join(args)}: {result.stderr}")
+    return result.stdout.strip()
+
+
+def git_sha(cwd: Path, ref: str = "HEAD") -> str:
+    return run_git(cwd, "rev-parse", ref)
+
+
+def git_describe(cwd: Path) -> str:
+    return run_git(cwd, "describe", "--tags", "--always")
+
+
+def git_commit(seed: Path, name: str, text: str) -> str:
+    (seed / name).write_text(text)
+    run_git(seed, "add", ".")
+    run_git(seed, "commit", "-m", f"change {name}")
+    return git_sha(seed)
 
 
 class FakeLCD:
@@ -180,3 +216,52 @@ def ctx(theme, fonts, config):
         )
 
     return _make
+
+
+@pytest.fixture
+def git_repo(tmp_path):
+    """A bare origin at two commits, and a work clone checked out at the
+    first — the shape a Pi finds on boot after a push."""
+    origin = tmp_path / "origin.git"
+    run_git(tmp_path, "init", "--bare", str(origin))
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "pyproject.toml").write_text('[project]\nname = "w"\n')
+    (seed / "app.py").write_text("v1\n")
+    run_git(seed, "init")
+    run_git(seed, "add", ".")
+    run_git(seed, "commit", "-m", "one")
+    run_git(seed, "remote", "add", "origin", str(origin))
+    run_git(seed, "push", "-u", "origin", "main")
+    first = git_sha(seed)
+    second = git_commit(seed, "app.py", "v2\n")
+    run_git(seed, "push", "origin", "main")
+    work = tmp_path / "work"
+    run_git(tmp_path, "clone", str(origin), str(work))
+    run_git(work, "reset", "--hard", first)
+    return SimpleNamespace(origin=origin, seed=seed, work=work,
+                           first=first, second=second)
+
+
+@pytest.fixture(scope="session")
+def deploy():
+    """Load deploy/*.py by path: they are not a package and must not be
+    imported from the repo root.  updatelib is registered under its own
+    name first so `import updatelib` inside update/healthcheck resolves.
+    """
+    import importlib.util
+    import sys
+    from types import SimpleNamespace
+
+    base = Path(__file__).resolve().parents[1] / "deploy"
+
+    def load(name):
+        spec = importlib.util.spec_from_file_location(name, base / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        return module
+
+    lib = load("updatelib")
+    return SimpleNamespace(lib=lib, update=load("update"),
+                           healthcheck=load("healthcheck"))
