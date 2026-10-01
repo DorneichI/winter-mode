@@ -1,0 +1,27 @@
+# winter-mode boot update (git fetch + reset + venv resync + version stamp)
+#
+# Install alongside wintermode.service, then
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable wintermode-update wintermode
+
+[Unit]
+Description=wintermode boot update
+After=network-online.target
+Wants=network-online.target
+# a non-git checkout (tarball install) is simply skipped
+ConditionPathIsDirectory=/opt/winter-mode/.git
+
+[Service]
+Type=oneshot
+User=winter
+WorkingDirectory=/opt/winter-mode
+# system python, NOT the venv python: this must run even when the venv is
+# broken.  stdlib only — it must not import wintermode.
+ExecStart=/usr/bin/python3 /opt/winter-mode/deploy/update.py --repo /opt/winter-mode --config /etc/wintermode/config.json
+# the venv resync can compile ertftm070 on the Zero; the default start
+# timeout (90s) would kill it mid-build
+TimeoutStartSec=1200
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

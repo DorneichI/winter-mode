@@ -14,10 +14,11 @@ from __future__ import annotations
 import socket
 import time
 
-from wintermode import __version__, device
+from wintermode import device
 from wintermode.context import Ctx
 from wintermode.net import ipv4 as _ipv4
 from wintermode.net import web_url
+from wintermode.version import read_deployed_version
 from wintermode.views import CardGrid, FormView, InfoView
 
 START = time.time()
@@ -43,6 +44,7 @@ class Settings(CardGrid):
         self._device_views: dict[str, object] = {}
         self._module_views: dict[str, object] = {}
         self._web_port: int | None = None
+        self._system_config_path = None  # captured when the view is built
 
     # --- hub cards ----------------------------------------------------------
 
@@ -71,9 +73,13 @@ class Settings(CardGrid):
 
     def _system_view(self, ctx: Ctx) -> InfoView:
         if "system" not in self._device_views:
+            # the version stamp lives next to the config: capture where
+            # the config IS at build time (the view is cached)
+            self._system_config_path = ctx.config.path
             self._device_views["system"] = InfoView("SYSTEM", [
                 ("HOST", lambda: socket.gethostname()),
-                ("VERSION", lambda: __version__),
+                ("VERSION", lambda: read_deployed_version(
+                    self._system_config_path)),
                 ("UPTIME", _uptime),
                 ("IP", _ipv4),
                 ("WEB", lambda: web_url(self._web_port)),

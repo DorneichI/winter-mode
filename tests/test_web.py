@@ -143,13 +143,25 @@ def test_device_payload_and_group_put(web):
     assert status == 200
     assert device["theme"]["name"] == "dark"
     assert set(device["tokens"]) == {"bg", "fg", "accent", "dim", "border"}
-    assert [g["id"] for g in device["groups"]] == ["display", "statusbar"]
+    assert [g["id"] for g in device["groups"]] == ["display", "statusbar",
+                                                   "updates"]
     before = config.generation
     status, _payload = request("PUT", port, "/api/device/display",
                                {"theme": "light"})
     assert status == 200
     assert config.data["theme"] == "light"
     assert config.generation == before + 1
+
+
+def test_put_device_updates_toggles_auto_update(web):
+    _server, _actions, config, _registry, port = web
+    status, _payload = request("PUT", port, "/api/device/updates",
+                               {"auto": False})
+    assert status == 200
+    assert config.data["updates"]["auto"] is False
+    # the tracked file carries the key the boot updater reads raw
+    saved = json.loads(config.path.read_text())
+    assert saved["updates"]["auto"] is False
 
 
 def test_device_put_rejects_bad_values(web):
@@ -240,6 +252,15 @@ def test_reported_web_url_uses_the_bound_port(web):
     assert device["network"]["web_url"].endswith(f":{port}")
 
 
+def test_device_reports_the_deployed_version_stamp(web, config):
+    # the boot updater stamps git-describe next to the config; the API
+    # serves that, not the frozen install-time metadata
+    _server, _actions, _config, _registry, port = web
+    (config.path.parent / "version").write_text("31ff60b\n")
+    _status, device = request("GET", port, "/api/device")
+    assert device["version"] == "31ff60b"
+
+
 def test_put_never_hands_back_the_secret_the_get_withheld(web):
     """One contract, one answer: the save that stores a secret must not
     serve it back to the browser the GET just blanked."""
@@ -253,8 +274,8 @@ def test_put_never_hands_back_the_secret_the_get_withheld(web):
 
 
 def test_a_page_that_is_not_bundled_is_a_404_not_a_dead_socket(web):
-    """/map is served from static/, and a missing page must still be an
-    HTTP answer the browser can show."""
+    """A path no static page backs must still be an HTTP answer the
+    browser can show, not a dead socket."""
     _server, _actions, _config, _registry, port = web
-    assert request("GET", port, "/map")[0] == 404
+    assert request("GET", port, "/nope")[0] == 404
     assert request("GET", port, "/")[0] == 200  # the server is still up

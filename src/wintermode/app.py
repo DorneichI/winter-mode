@@ -20,7 +20,6 @@ from pathlib import Path
 from ertftm070 import Display, Touch
 from PIL import Image, ImageDraw
 
-from wintermode import __version__
 from wintermode.boot import play_boot
 from wintermode.config import Config
 from wintermode.context import Ctx, Nav
@@ -28,6 +27,7 @@ from wintermode.fonts import SIZE_BAR, Fonts
 from wintermode.registry import Registry, discover
 from wintermode.taps import TapTracker
 from wintermode.theme import Theme, effective_theme
+from wintermode.version import read_deployed_version
 from wintermode.views import HomeView
 
 log = logging.getLogger(__name__)
@@ -373,6 +373,13 @@ def main() -> None:
         fonts = Fonts()
         app = WinterApp(lcd, touch, theme, fonts, config=config,
                         registry=registry)
+        play_boot(lcd, theme, fonts, read_deployed_version(config.path))
+        # render the first frame BEFORE the web server binds: a commit
+        # whose first render raises must fail ExecStartPost (nothing
+        # answers the probe), not serve 200 all through the splash and
+        # be confirmed healthy by the healthcheck
+        if app._step():
+            lcd.image(app.canvas)
         # the web companion starts before the loop so it is up by boot-end
         from wintermode.web.server import DEFAULT_PORT, WebServer
 
@@ -381,7 +388,6 @@ def main() -> None:
         server.start()
         # whatever port the kernel actually gave us (0 = ephemeral)
         app.web_port = server.port
-        play_boot(lcd, theme, fonts, __version__)
         app.run()
 
 

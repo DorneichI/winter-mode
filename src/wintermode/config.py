@@ -33,9 +33,11 @@ DEFAULTS: dict[str, Any] = {
     "statusbar_rotate": 10,
     "display": {"mode": "always_on", "idle_seconds": 60,
                 "light_from": "07:00", "light_to": "19:00"},
+    "updates": {"auto": True},
 }
 
-RESERVED = {"theme", "modules", "statusbar", "statusbar_rotate", "display"}
+RESERVED = {"theme", "modules", "statusbar", "statusbar_rotate", "display",
+            "updates"}
 
 # the reserved keys, expressed in the same DSL everything else uses
 THEME_SCHEMA = {
@@ -68,6 +70,13 @@ DISPLAY_PAGE_SCHEMA = {
     "idle_seconds": {**DISPLAY_SCHEMA["idle_seconds"],
                      "visible_if": {"field": "mode",
                                     "equals": "wake_on_touch"}},
+}
+
+# the boot updater reads this root key straight from the file (it cannot
+# import wintermode), so this schema is the ONE definition of the default
+# and the shape
+UPDATES_SCHEMA = {
+    "auto": {"type": "bool", "title": "Auto update", "default": True},
 }
 
 
@@ -123,6 +132,7 @@ def _coerce_shapes(data: dict[str, Any]) -> dict[str, Any]:
     off `data`, so a scalar here is a crash on the next frame.
     """
     data["display"] = schema.validate(DISPLAY_SCHEMA, data.get("display"))
+    data["updates"] = schema.validate(UPDATES_SCHEMA, data.get("updates"))
     data["modules"] = _coerce_modules(data.get("modules"))
     data["statusbar"] = _coerce_statusbar(data.get("statusbar"))
     return data
