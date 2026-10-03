@@ -72,17 +72,38 @@ def test_settings_hub_cards_include_device_and_module_pages(
     assert "BOSTON" in labels
 
 
-def test_settings_statusbar_schema_lists_other_modules_plus_rotation(
+def test_settings_statusbar_schema_lists_only_advertisers_plus_rotation(
         theme, fonts, ctx, config):
     settings = Settings()
     registry = setup_registry(config, Clock(), Boston(), settings)
     ctx = ctx(registry=registry)
     settings.cards(ctx)
     view = settings._device_views["statusbar"]
-    # the hub itself publishes no status items, so it gets no toggle —
-    # and the web API serves this exact schema (wintermode.device)
-    assert set(view.schema) == {"clock", "boston", "rotate_seconds"}
+    # only modules that define status_items get a toggle: clock publishes,
+    # boston and the hub do not — and the web API serves this exact
+    # schema (wintermode.device)
+    assert set(view.schema) == {"clock", "rotate_seconds"}
     assert "settings" not in view.schema
+    assert "boston" not in view.schema
+
+
+def test_settings_statusbar_view_rebuilds_when_advertisers_change(
+        theme, fonts, ctx, config):
+    # the schema is derived live, so the cached FormView must be
+    # replaced when the advertiser set changes — a stale row's write
+    # would be rejected by the current validator (uncaught on touch)
+    settings = Settings()
+    clock = Clock()
+    registry = setup_registry(config, clock, Boston(), settings)
+    ctx = ctx(registry=registry)
+    settings.cards(ctx)
+    view = settings._device_views["statusbar"]
+    assert "clock" in view.schema
+    clock.status_items = None  # stops advertising at runtime
+    settings.cards(ctx)
+    rebuilt = settings._device_views["statusbar"]
+    assert rebuilt is not view
+    assert "clock" not in rebuilt.schema
 
 
 def test_settings_display_page_merges_theme_and_behavior(

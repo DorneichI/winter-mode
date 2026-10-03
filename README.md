@@ -144,7 +144,10 @@ class MyModule:
     def render(self, draw, ctx) -> bool: ...     # draw inside ctx.content;
                                                  # True only if pixels changed
     def on_tap(self, x, y, ctx) -> bool: ...     # True = consumed
-    def status_items(self, ctx) -> list[BarItem]: ...
+    def status_items(self, ctx) -> list[BarItem]: ...  # optional: defining
+                                                 # it advertises bar content;
+                                                 # only advertisers get a
+                                                 # STATUS BAR toggle and bar time
     def on_action(self, action_id, ctx) -> None: ...  # runs on the main loop
 ```
 
@@ -245,6 +248,11 @@ GET  /font/{3270-Regular|3270SemiCondensed-Regular}.ttf
 Both config directions blank a stored `write_only` value and name it in
 `masked`, so a secret never travels back to the browser — reading the
 page after a save is the same answer as loading it fresh.
+
+`PUT /api/device/statusbar` accepts only the toggles of modules that
+advertise status-bar content (those defining `status_items`) plus
+`rotate_seconds`; any other key is a 400, so a stale client cannot
+resurrect a toggle the panel no longer offers.
 
 ## Development
 

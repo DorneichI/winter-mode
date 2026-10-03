@@ -4,8 +4,9 @@ DISPLAY and STATUS BAR are the settings that belong to the device rather
 than to any one module.  Both surfaces — the touch SETTINGS page and the
 web API — build their forms from the descriptors here, so a group can
 never exist on one surface and not the other, and a schema can never
-drift between them (the two used to disagree about whether the settings
-module itself gets a status-bar toggle).
+drift between them.  The STATUS BAR schema is derived from
+`statusbar_ids()`: one toggle per module that advertises (defines
+`status_items`), plus the rotation interval.
 
 A group is a plain record: a schema (the same DSL modules use), a
 `values()` that reads current config, and an `apply()` that validates a
@@ -42,16 +43,16 @@ class DeviceGroup:
 
 
 def statusbar_ids(registry) -> list[str]:
-    """Modules that can publish status items, in home order.
+    """Modules that advertise status-bar content, in home order.
 
-    A module opts out by declaring `status_bar = False` (the settings hub
-    does: it has nothing to say in the bar), so the rule is a property of
-    the module rather than a hardcoded id in each surface.
+    A module advertises by defining the optional `status_items` method —
+    the method IS the capability, so a module with nothing to publish
+    simply doesn't define it and appears in neither this schema nor the
+    bar.  The registry owns the rule; every surface consults it.
     """
     if registry is None:  # a bare Ctx (tests, tools) has no modules
         return []
-    return [module.id for module in registry.home_order()
-            if getattr(module, "status_bar", True)]
+    return registry.statusbar_ids()
 
 
 def statusbar_schema(registry) -> dict:

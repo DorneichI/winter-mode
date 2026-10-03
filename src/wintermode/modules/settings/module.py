@@ -34,7 +34,8 @@ class Settings(CardGrid):
     title = "SETTINGS"
     interval = 0
     config_schema = None
-    status_bar = False  # nothing of the hub's belongs in the status bar
+    # no status_items method: the hub does not advertise, so it gets no
+    # STATUS BAR toggle and never appears in the bar
     actions: list = []
 
     def __init__(self) -> None:
@@ -61,15 +62,24 @@ class Settings(CardGrid):
         return cards
 
     def _device_view(self, group, ctx: Ctx) -> FormView:
-        """One form per device group, built from its shared descriptor."""
-        if group.id not in self._device_views:
-            self._device_views[group.id] = FormView(
+        """One form per device group, rebuilt when its schema changes.
+
+        The STATUS BAR schema is derived live from the registry (a
+        module can start or stop advertising), so a cached form would
+        keep a row whose key the group's current validator rejects —
+        FormView.on_change does not catch that, and it would take the
+        main loop down.  An equal schema rebuilds nothing.
+        """
+        cached = self._device_views.get(group.id)
+        if getattr(cached, "schema", None) != group.schema:
+            cached = FormView(
                 group.title, group.schema, group.read,
                 # every write goes back through the group's validator,
                 # so the panel and the web API save identical values
                 lambda key, value, g=group: g.apply({key: value}),
             )
-        return self._device_views[group.id]
+            self._device_views[group.id] = cached
+        return cached
 
     def _system_view(self, ctx: Ctx) -> InfoView:
         if "system" not in self._device_views:
@@ -106,9 +116,6 @@ class Settings(CardGrid):
 
     def on_card(self, target: object, ctx: Ctx) -> None:
         ctx.nav.push(target)
-
-    def status_items(self, ctx: Ctx) -> list:
-        return []
 
     def on_action(self, action_id: str, ctx: Ctx) -> None:
         pass

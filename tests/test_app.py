@@ -13,6 +13,14 @@ def present(app, lcd) -> bool:
     return dirty
 
 
+def dim_pixels_in_bar(app) -> bool:
+    """Any status-item text (dim color) in the bar's item zone."""
+    return any(
+        app.canvas.getpixel((x, 15)) == app.theme.dim
+        for x in range(0, 400)
+    )
+
+
 def test_first_step_renders_and_presents_once(make_app):
     app, lcd, _touch, _clock = make_app()
     assert present(app, lcd) is True
@@ -158,16 +166,38 @@ def test_statusbar_toggle_hides_module_items(make_app, fake_module):
     clock.set(1001.0, 1_700_000_001.0)
     present(app, lcd)
 
-    def dim_pixels_in_bar():
-        return any(
-            app.canvas.getpixel((x, 15)) == app.theme.dim
-            for x in range(0, 400)
-        )
-
-    assert dim_pixels_in_bar()  # CHATTER is shown
+    assert dim_pixels_in_bar(app)  # CHATTER is shown
     app.config.update({"statusbar": {"boston": False}})
     app._step()
-    assert not dim_pixels_in_bar()  # hidden by the toggle
+    assert not dim_pixels_in_bar(app)  # hidden by the toggle
+
+
+def test_bar_never_asks_modules_that_publish_nothing(make_app, fake_module):
+    # a module without status_items is not an advertiser: the bar loop
+    # must not reach for the method (that would raise AttributeError)
+    app, lcd, _touch, clock = make_app()
+    present(app, lcd)
+    app.registry._all["boston"] = fake_module("boston", publish_status=False)
+    clock.set(1001.0, 1_700_000_001.0)
+    present(app, lcd)
+    assert not dim_pixels_in_bar(app)
+
+
+def test_bar_draws_by_object_not_by_registry_key(make_app, fake_module):
+    # the bar must not re-index the registry with the module-supplied
+    # id: a swapped-in module whose id differs from its _all key made
+    # the one-second bar tick raise KeyError and took the panel down
+    from wintermode.context import BarItem
+
+    app, lcd, _touch, clock = make_app()
+    present(app, lcd)
+    swapped = fake_module("clock")
+    swapped.id = "renamed"
+    swapped.status_items = lambda ctx: [BarItem("SWAP")]
+    app.registry._all["clock"] = swapped
+    clock.set(1001.0, 1_700_000_001.0)
+    assert present(app, lcd) is True  # draws instead of raising
+    assert dim_pixels_in_bar(app)
 
 
 def test_rotate_items_cycles_one_at_a_time():

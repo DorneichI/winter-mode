@@ -23,7 +23,7 @@ import threading
 import time
 from pathlib import Path
 
-from wintermode.context import BarItem, Ctx
+from wintermode.context import Ctx
 from wintermode.fonts import SIZE_FORM
 from wintermode.views import ROW_H
 from wintermode.widgets import (
@@ -288,13 +288,8 @@ class Boston:
 
     # --- module contract -----------------------------------------------------
 
-    def status_items(self, ctx: Ctx) -> list[BarItem]:
-        address = (ctx.config.namespace("boston").get("address") or ""
-                   ).strip()
-        if not address:
-            return [BarItem("no address set")]
-        return [BarItem("to " + truncate(ctx.fonts, address, 220,
-                                         size=SIZE_FORM))]
+    # no status_items method: boston does not advertise bar content, so
+    # it gets no STATUS BAR toggle and never appears in the bar
 
     def on_action(self, action_id: str, ctx: Ctx) -> None:
         if action_id == "abandon":

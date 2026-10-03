@@ -5,9 +5,6 @@
     "boston",
     "settings"
   ],
-  "statusbar": {
-    "boston": false
-  },
   "statusbar_rotate": 10,
   "display": {
     "mode": "always_on",

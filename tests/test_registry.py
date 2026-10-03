@@ -36,6 +36,23 @@ def write_module(base, name, source=MODULE_SOURCE):
     return module_dir
 
 
+# status_items is optional — the contract templates below cover "absent"
+# and "present but broken"; the {name} placeholder must survive the edit
+NO_STATUS_SOURCE = MODULE_SOURCE.replace(
+    "    def status_items(self, ctx):\n        return []\n\n", "")
+BROKEN_STATUS_SOURCE = MODULE_SOURCE.replace(
+    "    def status_items(self, ctx):\n        return []",
+    "    status_items = 3")
+ASYNC_STATUS_SOURCE = MODULE_SOURCE.replace(
+    "    def status_items(self, ctx):\n        return []",
+    "    async def status_items(self, ctx):\n        return []")
+# the edits must actually hit: a silent no-op would leave the "absent"
+# template defining status_items and void the coverage it stands for
+assert "status_items" not in NO_STATUS_SOURCE
+assert "status_items = 3" in BROKEN_STATUS_SOURCE
+assert "async def status_items" in ASYNC_STATUS_SOURCE
+
+
 def test_discovery_finds_valid_modules_sorted(tmp_path):
     write_module(tmp_path, "alpha")
     write_module(tmp_path, "beta")
@@ -77,6 +94,30 @@ def test_discovery_accepts_an_instance(tmp_path):
     assert [m.id for m in discover(tmp_path)] == ["wrapped"]
 
 
+def test_discovery_accepts_a_module_without_status_items(tmp_path):
+    # the method is optional: absent means "does not advertise"
+    write_module(tmp_path, "quiet", source=NO_STATUS_SOURCE)
+    assert [m.id for m in discover(tmp_path)] == ["quiet"]
+
+
+def test_discovery_rejects_a_non_callable_status_items(tmp_path, caplog):
+    # a typo'd method must fail loudly at boot, not silently hide the
+    # module's bar content — the whole module is skipped, like any other
+    # contract violation
+    write_module(tmp_path, "broken_bar", source=BROKEN_STATUS_SOURCE)
+    assert discover(tmp_path) == []
+    assert "status_items" in caplog.text
+
+
+def test_discovery_rejects_an_async_status_items(tmp_path, caplog):
+    # a coroutine is callable, but the bar calls status_items
+    # synchronously — items.extend(coroutine) is a TypeError on the
+    # render path, so this too must fail loudly at boot
+    write_module(tmp_path, "asyncy", source=ASYNC_STATUS_SOURCE)
+    assert discover(tmp_path) == []
+    assert "status_items" in caplog.text
+
+
 def test_registry_order_comes_from_config(config, fake_module):
     registry = Registry([fake_module("clock"), fake_module("boston"),
                          fake_module("settings")], config)
@@ -94,6 +135,50 @@ def test_registry_heals_the_modules_array(config, fake_module):
     # ghost dropped, boston appended
     assert registry.enabled_ids() == ["clock", "boston"]
     assert config.data["modules"] == ["clock", "boston"]
+
+
+def test_statusbar_ids_lists_only_advertisers(config, fake_module):
+    registry = Registry([fake_module("clock"),
+                         fake_module("boston", publish_status=False)],
+                        config)
+    assert registry.statusbar_ids() == ["clock"]
+
+
+def test_statusbar_ids_is_live(config, fake_module):
+    # a module swapped into the registry mid-run changes the result on
+    # the next call — nothing is cached at refresh time
+    registry = Registry([fake_module("clock"), fake_module("boston")], config)
+    assert registry.statusbar_ids() == ["clock", "boston"]
+    registry._all["boston"] = fake_module("boston", publish_status=False)
+    assert registry.statusbar_ids() == ["clock"]
+
+
+def test_registry_heals_stale_statusbar_toggles(config, fake_module):
+    config.update({"statusbar": {"clock": True, "ghost": False}})
+    Registry([fake_module("clock")], config)
+    # the toggle for a module that no longer advertises is dropped, in
+    # the file as well as in memory
+    assert config.data["statusbar"] == {"clock": True}
+    assert json.loads(config.path.read_text())["statusbar"] == {"clock": True}
+
+
+def test_statusbar_heal_does_not_loop_on_local_overlay_keys(tmp_path,
+                                                            fake_module):
+    # a stale key in the gitignored overlay must not make the heal
+    # rewrite the tracked file on every boot: the heal compares the base
+    # file's map, never the merged view
+    from wintermode.config import Config
+
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"statusbar": {"clock": True}}))
+    (tmp_path / "config.local.json").write_text(
+        json.dumps({"statusbar": {"ghost": False}}))
+    registry = Registry([fake_module("clock")], Config(path))
+    before = path.read_text()
+    generation = registry.config.generation
+    registry.refresh()
+    assert path.read_text() == before
+    assert registry.config.generation == generation  # no rewrite happened
 
 
 def test_registry_validates_module_namespaces(config, fake_module):

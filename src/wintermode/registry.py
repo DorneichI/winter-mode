@@ -27,7 +27,10 @@ MODULES_DIR = Path(__file__).parent / "modules"
 ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 REQUIRED_ATTRS = ("id", "title", "interval", "config_schema", "actions")
-REQUIRED_METHODS = ("render", "on_tap", "status_items", "on_action")
+REQUIRED_METHODS = ("render", "on_tap", "on_action")
+# `status_items` is OPTIONAL: defining it advertises status-bar content
+# (see Registry.statusbar_ids).  A module with nothing to publish simply
+# doesn't define it — or sets it to None, like `config_schema = None`.
 
 SETTINGS_ID = "settings"
 
@@ -74,6 +77,24 @@ def discover(base: Path = MODULES_DIR) -> list[Any]:
         if module_obj is None or not _looks_like_module(module_obj):
             log.warning("registry: %s has no valid MODULE, skipping", entry.name)
             continue
+        bar = getattr(module_obj, "status_items", None)
+        if bar is not None and not callable(bar):
+            # a typo'd method must not silently hide the module's bar
+            # content — same reject-the-module rule as any other contract
+            # violation (None is fine: it means "does not advertise")
+            log.warning(
+                "registry: %s has a non-callable status_items, skipping",
+                entry.name,
+            )
+            continue
+        if inspect.iscoroutinefunction(bar):
+            # the bar calls status_items synchronously (items.extend),
+            # so an async def would raise TypeError on every bar draw
+            log.warning(
+                "registry: %s has an async status_items, skipping",
+                entry.name,
+            )
+            continue
         if getattr(module_obj, "id", None) != entry.name:
             log.warning(
                 "registry: %s's id (%r) does not match its directory, skipping",
@@ -106,7 +127,8 @@ class Registry:
         self.refresh()
 
     def refresh(self) -> None:
-        """Re-read enabled/order from config; heal the array."""
+        """Re-read enabled/order from config; heal the array and the
+        status-bar toggles."""
         configured = self.config.data.get("modules", [])
         enabled = [mid for mid in configured if mid in self._all]
         for mid in self._all:  # discovered but not configured: enable
@@ -115,6 +137,23 @@ class Registry:
         if enabled != configured:
             self.config.update({"modules": enabled})
         self._enabled = enabled
+        self._heal_statusbar()
+
+    def _heal_statusbar(self) -> None:
+        """Drop status-bar toggles for modules that no longer advertise.
+
+        Compared against the BASE file's map, not the merged view — a
+        stale key in the gitignored overlay must not make this rewrite
+        the tracked file on every boot.  Like the modules heal, a module
+        that failed to import this boot loses its toggle (its id is not
+        in `self._all`).
+        """
+        ids = set(self.statusbar_ids())
+        base = self.config.namespace("statusbar", local=False)
+        cleaned = {key: enabled for key, enabled in base.items()
+                   if key in ids}
+        if cleaned != base:
+            self.config.set("statusbar", cleaned)
 
     def home_order(self) -> list[Any]:
         ids = list(self._enabled)
@@ -122,6 +161,23 @@ class Registry:
             ids.remove(SETTINGS_ID)
             ids.insert(0, SETTINGS_ID)  # settings pinned first
         return [self._all[mid] for mid in ids]
+
+    def statusbar_modules(self) -> list[Any]:
+        """Modules that advertise status-bar content, in home order.
+
+        The optional `status_items` method IS the advertisement: a module
+        with nothing to publish simply doesn't define it, and gets
+        neither a STATUS BAR toggle nor bar time.  Computed live — a
+        module swapped into the registry mid-run is reflected here.
+        Returns the module objects home_order already resolved, so a
+        caller never re-indexes the registry by a module-supplied id.
+        """
+        return [module for module in self.home_order()
+                if callable(getattr(module, "status_items", None))]
+
+    def statusbar_ids(self) -> list[str]:
+        """Ids of the advertising modules, in home order."""
+        return [module.id for module in self.statusbar_modules()]
 
     def enabled_ids(self) -> list[str]:
         return list(self._enabled)

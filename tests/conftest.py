@@ -141,12 +141,17 @@ class FakeModule:
     """A minimal module object speaking the whole contract."""
 
     def __init__(self, module_id, title=None, config_schema=None,
-                 actions=None, interval=0):
+                 actions=None, interval=0, publish_status=True):
         self.id = module_id
         self.title = title or module_id.upper()
         self.interval = interval
         self.config_schema = config_schema
         self.actions = actions or []
+        if not publish_status:
+            # "does not advertise": the capability test looks for a
+            # callable status_items, and None is not one.  Nothing is set
+            # on the publish path, so a subclass's own method still wins.
+            self.status_items = None
 
     def render(self, draw, ctx):
         return True

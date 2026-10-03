@@ -130,7 +130,11 @@ class WinterApp:
         if self.registry and self.config:
             ctx = self._ctx(now, points, wall)
             items = []
-            for module in self.registry.home_order():
+            # only advertisers publish: a module without status_items is
+            # never asked (registry.statusbar_modules is the one rule both
+            # surfaces consult) — the objects come from home_order, so the
+            # draw never re-indexes the registry by a module-supplied id
+            for module in self.registry.statusbar_modules():
                 if not self.config.data["statusbar"].get(module.id, True):
                     continue
                 items.extend(module.status_items(ctx))

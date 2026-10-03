@@ -186,19 +186,29 @@ def test_font_is_served(web):
     assert request("GET", port, "/font/evil.ttf")[0] == 404
 
 
-def test_statusbar_schema_hides_modules_that_publish_nothing(web, config,
-                                                             fake_module):
-    # the web used to offer a "settings bar" toggle the panel never showed
+def test_statusbar_schema_hides_modules_that_publish_nothing(web, fake_module):
+    # a module without a status_items method advertises nothing: no
+    # toggle, no value.  boston is swapped for a quiet fake (it is
+    # enabled, so the exclusion proves the capability rule, not the
+    # enabled set).
     _server, _actions, _config, registry, port = web
-    quiet = fake_module("settings")
-    quiet.status_bar = False
-    registry._all["settings"] = quiet
+    registry._all["boston"] = fake_module("boston", publish_status=False)
     status, device = request("GET", port, "/api/device")
     assert status == 200
     statusbar = next(g for g in device["groups"] if g["id"] == "statusbar")
-    assert "settings" not in statusbar["schema"]
-    assert "settings" not in statusbar["values"]
-    assert set(statusbar["schema"]) == {"clock", "boston", "rotate_seconds"}
+    assert "boston" not in statusbar["schema"]
+    assert "boston" not in statusbar["values"]
+    assert set(statusbar["schema"]) == {"clock", "rotate_seconds"}
+
+
+def test_statusbar_put_rejects_non_advertiser_keys(web, fake_module):
+    # a stale client that still sends {"boston": false} gets a 400: the
+    # strict validator only knows the toggles of advertising modules
+    _server, _actions, _config, registry, port = web
+    registry._all["boston"] = fake_module("boston", publish_status=False)
+    status, _payload = request("PUT", port, "/api/device/statusbar",
+                               {"boston": False})
+    assert status == 400
 
 
 def test_put_device_theme_is_not_404(web):
