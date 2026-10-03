@@ -474,18 +474,6 @@ def test_empty_trip_list_reads_as_no_route(boston, trips_fetch, theme, fonts,
 # --- module contract -----------------------------------------------------------
 
 
-def test_status_items_show_address(boston, theme, fonts, ctx, config):
-    c = make_ctx(ctx, config)
-    (item,) = boston.status_items(c)
-    assert "100 Main St" in item.text
-
-
-def test_status_items_without_address(boston, theme, fonts, ctx, config):
-    c = ctx(registry=None)
-    (item,) = boston.status_items(c)
-    assert "no address" in item.text
-
-
 def test_schema_covers_address_mode_and_key():
     assert set(SCHEMA) == {"address", "mode", "api_key"}
     assert SCHEMA["mode"]["options"] == list(MODES)

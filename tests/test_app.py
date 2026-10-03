@@ -170,6 +170,20 @@ def test_statusbar_toggle_hides_module_items(make_app, fake_module):
     assert not dim_pixels_in_bar()  # hidden by the toggle
 
 
+def test_bar_never_asks_modules_that_publish_nothing(make_app, fake_module):
+    # a module without status_items is not an advertiser: the bar loop
+    # must not reach for the method (that would raise AttributeError)
+    app, lcd, _touch, clock = make_app()
+    present(app, lcd)
+    app.registry._all["boston"] = fake_module("boston", publish_status=False)
+    clock.set(1001.0, 1_700_000_001.0)
+    present(app, lcd)
+    assert not any(
+        app.canvas.getpixel((x, 15)) == app.theme.dim
+        for x in range(0, 400)
+    )
+
+
 def test_rotate_items_cycles_one_at_a_time():
     from wintermode.app import _rotate_items
     items = ["a", "b", "c"]

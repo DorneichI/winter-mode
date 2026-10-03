@@ -130,10 +130,13 @@ class WinterApp:
         if self.registry and self.config:
             ctx = self._ctx(now, points, wall)
             items = []
-            for module in self.registry.home_order():
-                if not self.config.data["statusbar"].get(module.id, True):
+            # only advertisers publish: a module without status_items is
+            # never asked (registry.statusbar_ids is the one rule both
+            # surfaces consult)
+            for module_id in self.registry.statusbar_ids():
+                if not self.config.data["statusbar"].get(module_id, True):
                     continue
-                items.extend(module.status_items(ctx))
+                items.extend(self.registry[module_id].status_items(ctx))
             rotate = self.config.data.get("statusbar_rotate", 0)
             for item in _rotate_items(items, wall, rotate):
                 label = f"[{item.text}]"

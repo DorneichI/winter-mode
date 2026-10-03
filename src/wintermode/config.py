@@ -266,6 +266,18 @@ class Config:
 
     # --- mutation ----------------------------------------------------------
 
+    def set(self, key: str, value: Any) -> None:
+        """Replace one top-level key wholesale; deep-merge would keep stale entries.
+
+        The caller hands over an already-validated, correctly-shaped value
+        (the healers that need to DROP entries use this — `update()`'s
+        deep merge cannot remove a key).  Nothing here re-coerces it.
+        """
+        with self._lock:
+            self._base[key] = value
+            self._refresh()
+        self.save()
+
     def update(self, mapping: dict[str, Any]) -> None:
         """Deep-merge top-level namespaces into the base file."""
         with self._lock:

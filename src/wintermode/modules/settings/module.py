@@ -34,7 +34,8 @@ class Settings(CardGrid):
     title = "SETTINGS"
     interval = 0
     config_schema = None
-    status_bar = False  # nothing of the hub's belongs in the status bar
+    # no status_items method: the hub does not advertise, so it gets no
+    # STATUS BAR toggle and never appears in the bar
     actions: list = []
 
     def __init__(self) -> None:
@@ -106,9 +107,6 @@ class Settings(CardGrid):
 
     def on_card(self, target: object, ctx: Ctx) -> None:
         ctx.nav.push(target)
-
-    def status_items(self, ctx: Ctx) -> list:
-        return []
 
     def on_action(self, action_id: str, ctx: Ctx) -> None:
         pass

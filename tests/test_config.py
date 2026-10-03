@@ -26,6 +26,18 @@ def test_extra_top_level_namespaces_survive_a_save_roundtrip(tmp_path):
     assert json.loads(path.read_text())["boston"] == {"count": 7}
 
 
+def test_set_replaces_a_key_wholesale(tmp_path):
+    # update() deep-merges, so dropping a stale entry needs set()
+    path = tmp_path / "config.json"
+    config = Config(path)
+    config.update({"statusbar": {"clock": True, "ghost": False}})
+    generation = config.generation
+    config.set("statusbar", {"clock": True})
+    assert config.data["statusbar"] == {"clock": True}  # ghost is gone
+    assert config.generation == generation + 1
+    assert json.loads(path.read_text())["statusbar"] == {"clock": True}
+
+
 def test_invalid_reserved_value_falls_back_with_log(tmp_path, caplog):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"theme": 42, "display": "not-a-dict"}))
