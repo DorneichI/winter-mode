@@ -51,7 +51,11 @@ def text_y(fonts: Fonts, text: str, y0: float, y1: float, weight: str = "regular
 
 @dataclass(frozen=True)
 class Rect:
-    """A half-open rectangle hit shape: x0 <= x < x1, as it always was."""
+    """A half-open rectangle hit shape: x0 <= x < x1, as it always was.
+
+    Also indexable/sliceable/unpackable like the tuple alias it
+    replaced, so older callers keep working.
+    """
 
     x0: float
     y0: float
@@ -66,6 +70,12 @@ class Rect:
 
     def __iter__(self):
         yield from (self.x0, self.y0, self.x1, self.y1)
+
+    def __len__(self) -> int:
+        return 4
+
+    def __getitem__(self, index):
+        return (self.x0, self.y0, self.x1, self.y1)[index]
 
 
 @dataclass(frozen=True)
@@ -112,11 +122,14 @@ class Button:
     enabled: bool = True
     pressed: bool = False
     border_color: str = "border"  # theme token: "border" | "fg" | "dim"
+    label_color: str | None = None  # theme token; None = theme.fg
     border_width: int = 1
 
     def __post_init__(self) -> None:
         if self.border is True:
             self.border = self.hit
+        elif self.border is False:
+            self.border = None  # documented as "draws none" — never a shape
 
     def contains(self, x: float, y: float) -> bool:
         return self.enabled and self.hit.contains(x, y)
@@ -136,7 +149,9 @@ class Button:
             text_color, outline = theme.bg, getattr(theme, self.border_color)
         else:
             fill = theme.bg
-            text_color, outline = theme.fg, getattr(theme, self.border_color)
+            text_color = (getattr(theme, self.label_color)
+                          if self.label_color else theme.fg)
+            outline = getattr(theme, self.border_color)
         border = self.border
         if border is not None:
             if isinstance(border, Rect):
@@ -151,17 +166,23 @@ class Button:
             self._draw_label(draw, fonts, text_color)
 
     def _draw_label(self, draw, fonts: Fonts, color) -> None:
+        # the label belongs to what is drawn (the border shape); the hit
+        # shape may be a larger tap target, e.g. the bar's full-cell hits
         label = self.label
-        if isinstance(self.hit, Rect):
-            max_w = max(1, self.hit.x1 - self.hit.x0 - 12)
+        shape = self.border if isinstance(self.border, (Rect, Circle)) \
+            else self.hit
+        if isinstance(shape, Rect):
+            max_w = max(1, shape.x1 - shape.x0 - 12)
             label = truncate(fonts, label, max_w, self.weight, self.size)
-            text_x = self.hit.x0 + (self.hit.x1 - self.hit.x0
-                                    - fonts.textwidth(label, self.weight,
-                                                      self.size)) / 2
-            ty = text_y(fonts, label, self.hit.y0, self.hit.y1,
+            text_x = shape.x0 + (shape.x1 - shape.x0
+                                 - fonts.textwidth(label, self.weight,
+                                                   self.size)) / 2
+            ty = text_y(fonts, label, shape.y0, shape.y1,
                         self.weight, self.size)
         else:
-            cx, cy = self.hit.center()
+            cx, cy = shape.center()
+            label = truncate(fonts, label, max(1, 2 * shape.r - 12),
+                             self.weight, self.size)
             w, h = fonts.textsize(label, self.weight, self.size)
             text_x, ty = cx - w / 2, cy - h / 2
         fonts.draw_text(draw, (text_x, ty), label, self.weight, self.size,
@@ -183,15 +204,40 @@ def tap(buttons: list[tuple[Button, T]], x: float, y: float) -> T | None:
     return None
 
 
+def button_width(fonts: Fonts, label: str, weight: str = "regular",
+                 size: int = SIZE_CARD, *, pad: int = 12,
+                 min_width: int = 40) -> int:
+    """The box width that fits `label` with `pad` on each side."""
+    return max(min_width, fonts.textwidth(label, weight, size) + 2 * pad)
+
+
 def button_auto(anchor_x1: int, y0: int, height: int, label: str,
                 fonts: Fonts, *, weight: str = "regular",
                 size: int = SIZE_CARD, pressed: bool = False,
                 enabled: bool = True, pad: int = 12,
-                min_width: int = 40) -> Button:
+                min_width: int = 40,
+                label_color: str | None = None) -> Button:
     """A right-anchored button sized to its label; constructs, never draws."""
-    width = max(min_width, fonts.textwidth(label, weight, size) + 2 * pad)
+    width = button_width(fonts, label, weight, size, pad=pad,
+                         min_width=min_width)
     return Button(Rect(anchor_x1 - width, y0, anchor_x1, y0 + height), label,
-                  weight=weight, size=size, pressed=pressed, enabled=enabled)
+                  weight=weight, size=size, pressed=pressed, enabled=enabled,
+                  label_color=label_color)
+
+
+def strip_start(x0: float, x1: float, total: float) -> float:
+    """The x where a centered `total`-wide row starts inside the strip."""
+    return x0 + (x1 - x0 - total) / 2
+
+
+def clamp_offset(offset: int, visible: int, total: int) -> int:
+    """A scroll offset clamped so the visible window never passes the end.
+
+    Clamp BEFORE slicing: a collection that shrank under a stale offset
+    would otherwise render an empty/past-end frame until something else
+    happens to re-render it.
+    """
+    return min(max(offset, 0), max(total - visible, 0))
 
 
 def paginator(draw, strip: tuple[int, int, int, int], page: int, pages: int,
@@ -206,13 +252,12 @@ def paginator(draw, strip: tuple[int, int, int, int], page: int, pages: int,
     x0, y0, x1, y1 = strip
     if pages <= 1:
         return []
-    prev_w = max(40, fonts.textwidth("‹ prev", "regular", size) + 24)
-    next_w = max(40, fonts.textwidth("next ›", "regular", size) + 24)
+    prev_w = button_width(fonts, "‹ prev", size=size)
+    next_w = button_width(fonts, "next ›", size=size)
     counter = f"{page + 1}/{pages}"
     counter_w = fonts.textwidth(counter, "regular", size)
     total = prev_w + next_w + counter_w + 40
-    cx = x0 + (x1 - x0) / 2
-    cursor = cx - total / 2
+    cursor = strip_start(x0, x1, total)
     prev = Button(Rect(cursor, y0, cursor + prev_w, y1), "‹ prev", size=size,
                   enabled=page > 0)
     prev.draw(draw, fonts, theme)
@@ -238,11 +283,10 @@ def scroller(draw, strip: tuple[int, int, int, int], offset: int,
     can_down = offset + visible < total
     if not (can_up or can_down):
         return []
-    up_w = max(40, fonts.textwidth("▲", "regular", size) + 24)
-    down_w = max(40, fonts.textwidth("▼", "regular", size) + 24)
+    up_w = button_width(fonts, "▲", size=size)
+    down_w = button_width(fonts, "▼", size=size)
     total_w = up_w + down_w + 20
-    cx = x0 + (x1 - x0) / 2
-    cursor = cx - total_w / 2
+    cursor = strip_start(x0, x1, total_w)
     up = Button(Rect(cursor, y0, cursor + up_w, y1), "▲", size=size,
                 enabled=can_up)
     up.draw(draw, fonts, theme)

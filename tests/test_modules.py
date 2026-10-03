@@ -2,6 +2,7 @@
 
 import time
 
+from conftest import tap_center
 from PIL import Image, ImageDraw
 
 from wintermode.config import UPDATES_SCHEMA
@@ -138,8 +139,7 @@ def test_settings_updates_toggle_writes_the_root_key(
     view.render(draw, ctx)
     for button, key, action in view._rows:
         if key == "auto" and action == "toggle":
-            x, y = button.hit.center()
-            assert view.on_tap(int(x), int(y), ctx) is True
+            tap_center(view, button, ctx)
             assert config.data["updates"]["auto"] is False
             return
     raise AssertionError("no toggle row for 'auto'")

@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from wintermode.context import Ctx
-from wintermode.fonts import SIZE_FORM, SIZE_PAGINATOR
+from wintermode.fonts import SIZE_FORM
 from wintermode.schema import (
     cycle_choice,
     step_int,
@@ -34,6 +34,7 @@ from wintermode.widgets import (
     Button,
     Rect,
     button_auto,
+    clamp_offset,
     paginate,
     paginator,
     scroller,
@@ -277,7 +278,7 @@ class ListView(PagedMixin):
         The clamp happens BEFORE the slice — a collection that shrank
         under a stale offset would otherwise render past its end.
         """
-        self._offset = min(max(self._offset, 0), max(len(rows) - per_page, 0))
+        self._offset = clamp_offset(self._offset, per_page, len(rows))
         return rows[self._offset : self._offset + per_page]
 
     def _header_h(self, ctx: Ctx) -> int:
@@ -299,13 +300,13 @@ class ListView(PagedMixin):
             visible_rows = self._scroll_visible(rows, per_page)
             self._scroller = scroller(
                 draw, strip, self._offset, len(visible_rows), len(rows),
-                ctx.fonts, ctx.theme, size=SIZE_PAGINATOR,
+                ctx.fonts, ctx.theme,
             )
         else:
             pages, self.page, visible_rows = _paged(rows, self.page, per_page)
             self._paginator = paginator(
                 draw, strip, self.page, pages,
-                ctx.fonts, ctx.theme, size=SIZE_PAGINATOR,
+                ctx.fonts, ctx.theme,
             )
         self._rows = []
         for i, row in enumerate(visible_rows):
@@ -324,6 +325,15 @@ class ListView(PagedMixin):
                         label, "regular", SIZE_FORM, theme.dim)
         control = getattr(self, f"_row_{row.kind}", self._row_info)
         control(draw, ctx, row, top, bottom, x1)
+
+    def _select_row(self, draw, ctx: Ctx, row: Row, top: int, bottom: int,
+                    x1: int, pressed: bool = False) -> None:
+        """A select-style row as one full-width button: the line is the target."""
+        button = Button(Rect(ctx.content[0] + FORM_PAGE_MARGIN, top + 2,
+                             x1 - FORM_PAGE_MARGIN, bottom - 2),
+                        row.label, size=SIZE_FORM, pressed=pressed)
+        button.draw(draw, ctx.fonts, ctx.theme)
+        self._rows.append((button, row.key, "select"))
 
     # --- row controls (one method per Row.kind) ------------------------------
 
@@ -501,12 +511,7 @@ class PickerView(ListView):
 
     def _row_select(self, draw, ctx: Ctx, row: Row, top: int, bottom: int,
                     x1: int) -> None:
-        """A picker row is a full-width button: the whole line is the target."""
-        button = Button(Rect(ctx.content[0] + FORM_PAGE_MARGIN, top + 2,
-                             x1 - FORM_PAGE_MARGIN, bottom - 2),
-                        row.label, size=SIZE_FORM)
-        button.draw(draw, ctx.fonts, ctx.theme)
-        self._rows.append((button, row.key, "select"))
+        self._select_row(draw, ctx, row, top, bottom, x1)
 
     def _apply(self, action: str, key: str, ctx: Ctx) -> bool:
         if action != "select":
@@ -548,12 +553,8 @@ class ConfirmView(ListView):
 
     def _row_select(self, draw, ctx: Ctx, row: Row, top: int, bottom: int,
                     x1: int) -> None:
-        button = Button(Rect(ctx.content[0] + FORM_PAGE_MARGIN, top + 2,
-                             x1 - FORM_PAGE_MARGIN, bottom - 2),
-                        row.label, size=SIZE_FORM,
-                        pressed=(row.key == "yes"))
-        button.draw(draw, ctx.fonts, ctx.theme)
-        self._rows.append((button, row.key, "select"))
+        self._select_row(draw, ctx, row, top, bottom, x1,
+                         pressed=(row.key == "yes"))
 
     def _apply(self, action: str, key: str, ctx: Ctx) -> bool:
         if action != "select":

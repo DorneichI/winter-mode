@@ -1,5 +1,6 @@
 """Framework views: card grids, auto-generated forms, info rows."""
 
+from conftest import tap_center
 from PIL import Image, ImageDraw
 
 from wintermode.views import CARD_PAGE_SIZE, FormView, HomeView, InfoView
@@ -8,11 +9,6 @@ from wintermode.views import CARD_PAGE_SIZE, FormView, HomeView, InfoView
 def make_canvas(theme):
     image = Image.new("RGB", (800, 480), theme.bg)
     return image, ImageDraw.Draw(image)
-
-
-def tap_center(view, button, ctx):
-    x, y = button.hit.center()
-    assert view.on_tap(int(x), int(y), ctx) is True
 
 
 def render_home(theme, fonts, ctx_factory, registry=None, page=0):

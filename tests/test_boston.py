@@ -7,6 +7,7 @@ import threading
 import time
 
 import pytest
+from conftest import tap_center
 from PIL import Image, ImageDraw
 
 from wintermode.modules.boston import google
@@ -86,11 +87,6 @@ def canvas():
 def alert_on_stack(ctx):
     assert len(ctx.nav) == 2
     return ctx.nav.top
-
-
-def tap_center(view, button, ctx):
-    x, y = button.hit.center()
-    assert view.on_tap(int(x), int(y), ctx) is True
 
 
 def station_button(boston, vid):
@@ -236,6 +232,67 @@ def test_tap_picks_nearest_station_not_first_hitbox(boston, trips_fetch,
     assert boston.on_tap(tx, ty, c) is True
     fetch.wait_for_calls(1)
     assert fetch.calls[0]["lat"] == pytest.approx(42.356395)
+
+
+def test_station_tie_keeps_the_later_appended(boston, trips_fetch, theme,
+                                              fonts, ctx, config, monkeypatch):
+    """An exact-distance tie keeps main's rule: the later station wins."""
+    fetch = trips_fetch()
+    fetch.release = None
+    boston._fetch = fetch
+    c = make_ctx(ctx, config)
+    boston._stations = {
+        "a": {"id": "a", "name": "A", "x": 0.0, "y": 0.0,
+              "lat": 1.0, "lon": 1.0},
+        "b": {"id": "b", "name": "B", "x": 1.0, "y": 1.0,
+              "lat": 2.0, "lon": 2.0},
+    }
+    boston._edges = []  # the real graph's edge endpoints bypass _stations
+    places = {"a": (400.0, 200.0), "b": (404.0, 200.0)}
+    monkeypatch.setattr(boston, "_place", lambda station, ctx: places[station["id"]])
+    render(boston, c)
+    assert boston.on_tap(402, 200, c) is True  # equidistant from both
+    fetch.wait_for_calls(1)
+    assert fetch.calls[0]["lat"] == pytest.approx(2.0)  # main picked 'b'
+
+
+def test_station_tap_before_the_first_render(boston, trips_fetch, ctx, config,
+                                             monkeypatch):
+    """on_tap recomputes centers, so it needs no prior render to hit."""
+    fetch = trips_fetch()
+    fetch.release = None
+    boston._fetch = fetch
+    c = make_ctx(ctx, config)
+    boston._stations = {
+        "a": {"id": "a", "name": "A", "x": 0.0, "y": 0.0,
+              "lat": 1.0, "lon": 1.0},
+    }
+    boston._edges = []
+    monkeypatch.setattr(boston, "_place", lambda station, ctx: (400.0, 200.0))
+    assert boston._station_buttons == []  # never rendered
+    assert boston.on_tap(400, 200, c) is True
+    fetch.wait_for_calls(1)
+    assert fetch.calls[0]["lat"] == pytest.approx(1.0)
+
+
+def test_station_hit_boundary_is_inclusive(boston, trips_fetch, theme, fonts,
+                                           ctx, config, monkeypatch):
+    """A tap exactly HIT_PAD from the center hits; one pixel farther misses."""
+    fetch = trips_fetch()
+    fetch.release = None
+    boston._fetch = fetch
+    c = make_ctx(ctx, config)
+    boston._stations = {
+        "a": {"id": "a", "name": "A", "x": 0.0, "y": 0.0,
+              "lat": 1.0, "lon": 1.0},
+    }
+    boston._edges = []
+    monkeypatch.setattr(boston, "_place", lambda station, ctx: (400.0, 200.0))
+    render(boston, c)
+    pad = boston_mod.HIT_PAD
+    assert boston.on_tap(400 + pad, 200, c) is True
+    fetch.wait_for_calls(1)
+    assert boston.on_tap(400 + pad + 1, 200, c) is False
 
 
 def test_tap_without_address_shows_descriptive_error(boston, trips_fetch,

@@ -72,6 +72,44 @@ def test_circle_hit_contains():
     assert not button.contains(50, 61)
 
 
+def test_rect_keeps_the_old_tuple_protocol():
+    """Rect replaced a tuple alias: indexing/slicing/len must keep working."""
+    rect = Rect(1, 2, 3, 4)
+    assert (rect[0], rect[1], rect[2], rect[3]) == (1, 2, 3, 4)
+    assert rect[2:] == (3, 4)
+    assert len(rect) == 4
+
+
+def test_button_border_false_draws_no_border(theme, fonts):
+    """The docstring documents False as "draws none" — and it must not crash."""
+    canvas = Image.new("RGB", (120, 60), theme.bg)
+    draw = ImageDraw.Draw(canvas)
+    button = Button(Rect(10, 10, 110, 50), border=False)
+    assert button.border is None
+    button.draw(draw, fonts, theme)
+    assert canvas.getpixel((10, 10)) == theme.bg  # nothing painted there
+
+
+def test_circle_label_is_truncated_to_its_hit(theme, fonts):
+    """A label on a circle-hit button fits the circle, like the Rect path."""
+    canvas = Image.new("RGB", (400, 200), theme.bg)
+    draw = ImageDraw.Draw(canvas)
+    Button(Circle(200, 100, 30), "A VERY LONG STATION NAME",
+           border=None).draw(draw, fonts, theme)
+    ink = [x for x in range(400) if canvas.getpixel((x, 100)) != theme.bg]
+    assert ink, "the label must still draw"
+    assert min(ink) >= 170 and max(ink) <= 230  # within the hit circle
+
+
+def test_button_label_color_uses_a_theme_token(theme, fonts):
+    canvas = Image.new("RGB", (100, 60), theme.bg)
+    draw = ImageDraw.Draw(canvas)
+    Button(Rect(10, 10, 90, 50), "GO", border=None,
+           label_color="accent").draw(draw, fonts, theme)
+    colors = {c for _count, c in canvas.getcolors()}
+    assert theme.accent in colors
+
+
 def test_tap_returns_first_matching_action():
     a = Button(Rect(0, 0, 50, 50))
     b = Button(Rect(0, 0, 100, 100))

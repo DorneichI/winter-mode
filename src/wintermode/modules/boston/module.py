@@ -31,7 +31,9 @@ from wintermode.widgets import (
     Circle,
     Rect,
     button_auto,
+    clamp_offset,
     scroller,
+    strip_start,
     tap,
     text_y,
     truncate,
@@ -168,17 +170,23 @@ class Boston:
         for a, b, colors in self._edges:
             self._draw_edge(draw, self._place(a, ctx), self._place(b, ctx),
                             colors)
-        self._station_buttons = []
+        self._station_buttons = self._station_buttons_for(ctx)
+        for button, _vid in self._station_buttons:
+            button.draw(draw, ctx.fonts, ctx.theme)
+        return True
+
+    def _station_buttons_for(self, ctx: Ctx) -> list[tuple[Button, str]]:
+        """Fresh station Buttons for the current content geometry."""
+        buttons = []
         for v in self._stations.values():
             cx, cy = self._place(v, ctx)
             # hit at HIT_PAD radius, but paint only the 8px dot: a bg
             # fill at hit radius would erase the track lines around it
-            button = Button(Circle(cx, cy, HIT_PAD),
-                            border=Circle(cx, cy, STATION_RADIUS),
-                            border_color="fg", border_width=2)
-            button.draw(draw, ctx.fonts, ctx.theme)
-            self._station_buttons.append((button, v["id"]))
-        return True
+            buttons.append((Button(Circle(cx, cy, HIT_PAD),
+                                   border=Circle(cx, cy, STATION_RADIUS),
+                                   border_color="fg", border_width=2),
+                            v["id"]))
+        return buttons
 
     def _draw_edge(self, draw, p0: tuple[float, float],
                    p1: tuple[float, float], colors: list[str]) -> None:
@@ -207,13 +215,18 @@ class Boston:
     # --- taps --------------------------------------------------------------
 
     def on_tap(self, x: int, y: int, ctx: Ctx) -> bool:
-        # the nearest station center within HIT_PAD wins: downtown
-        # stations are closer than a hitbox apart, so overlap order must
-        # not decide the trip.  `<=` keeps the tie rule: the station
-        # appended first stays.
+        # the nearest station center wins: downtown stations are closer
+        # than a hitbox apart, so overlap order must not decide the
+        # trip.  Recompute per tap — like the pre-Button code did — so a
+        # tap never hit-tests the last render's stale centers or needs a
+        # render first.  Candidates come from the Button's own hit shape
+        # (never a second copy of the radius); an exact-distance tie
+        # keeps the station appended last, as before.
         best = None
-        bestd = HIT_PAD
-        for button, vid in self._station_buttons:
+        bestd = math.inf
+        for button, vid in self._station_buttons_for(ctx):
+            if not button.contains(x, y):
+                continue
             cx, cy = button.hit.center()
             d = math.hypot(cx - x, cy - y)
             if d <= bestd:
@@ -502,8 +515,7 @@ class TripAlert:
         scroller_strip = (x0, y1 - FOOTER_H - SCROLLER_H, x1, y1 - FOOTER_H)
         per_page = max(1, (scroller_strip[1] - legs_top) // ROW_H)
         rows = self._leg_rows(trip)
-        self._leg_offset = min(max(self._leg_offset, 0),
-                               max(len(rows) - per_page, 0))
+        self._leg_offset = clamp_offset(self._leg_offset, per_page, len(rows))
         for i, text in enumerate(rows[self._leg_offset:
                                       self._leg_offset + per_page]):
             self._row(draw, ctx, legs_top + i * ROW_H, text, theme.fg)
@@ -537,7 +549,7 @@ class TripAlert:
             labels = [("done", True)]
         width, height, gap = 130, FOOTER_H - 8, 16
         total = len(labels) * width + (len(labels) - 1) * gap
-        cursor = x0 + (x1 - x0 - total) / 2
+        cursor = strip_start(x0, x1, total)
         for action, enabled in labels:
             rect = (cursor, strip_top + 4, cursor + width, strip_top + height)
             button = Button(Rect(*rect), action, size=SIZE_FORM,
@@ -566,7 +578,7 @@ class TripAlert:
         elif action == ">":
             self._index += 1
             self._leg_offset = 0
-        else:  # "up" / "down"
+        elif action in ("up", "down"):
             self._leg_offset += 1 if action == "down" else -1
         return True
 

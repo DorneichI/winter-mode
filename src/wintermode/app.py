@@ -29,7 +29,7 @@ from wintermode.taps import TapTracker
 from wintermode.theme import Theme, effective_theme
 from wintermode.version import read_deployed_version
 from wintermode.views import HomeView
-from wintermode.widgets import Button, button_auto, tap
+from wintermode.widgets import Button, Rect, button_auto, tap
 
 log = logging.getLogger(__name__)
 
@@ -158,13 +158,26 @@ class WinterApp:
 
         self._bar_buttons = []
         if len(self.nav) > 1:  # back/home exist only below the root
+            # the boxed look is the *border*; the hit shape stays the
+            # whole bar cell, because _step routes every y < BAR_H tap
+            # here and a miss would silently swallow the tap.  The cell
+            # edges reproduce the pre-unification bracketed-label strips
+            # so the touch regions do not move.
             home = button_auto(width - 8, 2, BAR_H - 4, "⌂ HOME", self.fonts,
-                               size=SIZE_BAR)
+                               size=SIZE_BAR, label_color="accent")
+            home_x = width - self.fonts.textwidth("[⌂ HOME]", "regular",
+                                                  SIZE_BAR) - 8
+            home_x0 = home.hit.x0  # drawn box edge: anchors the back box
+            home.hit = Rect(home_x, 0, width, BAR_H)
             home.draw(draw, self.fonts, self.theme)
             self._bar_buttons.append((home, "home"))
 
-            back = button_auto(int(home.hit.x0) - 10, 2, BAR_H - 4, "‹ BACK",
-                               self.fonts, size=SIZE_BAR)
+            back = button_auto(int(home_x0) - 10, 2, BAR_H - 4, "‹ BACK",
+                               self.fonts, size=SIZE_BAR,
+                               label_color="accent")
+            back_x = home_x - self.fonts.textwidth("[‹ BACK]", "regular",
+                                                   SIZE_BAR) - 10
+            back.hit = Rect(back_x, 0, home_x, BAR_H)
             back.draw(draw, self.fonts, self.theme)
             self._bar_buttons.append((back, "back"))
 
