@@ -87,6 +87,14 @@ def discover(base: Path = MODULES_DIR) -> list[Any]:
                 entry.name,
             )
             continue
+        if inspect.iscoroutinefunction(bar):
+            # the bar calls status_items synchronously (items.extend),
+            # so an async def would raise TypeError on every bar draw
+            log.warning(
+                "registry: %s has an async status_items, skipping",
+                entry.name,
+            )
+            continue
         if getattr(module_obj, "id", None) != entry.name:
             log.warning(
                 "registry: %s's id (%r) does not match its directory, skipping",
@@ -142,8 +150,6 @@ class Registry:
         """
         ids = set(self.statusbar_ids())
         base = self.config.namespace("statusbar", local=False)
-        if not base:  # nothing recorded: nothing to heal
-            return
         cleaned = {key: enabled for key, enabled in base.items()
                    if key in ids}
         if cleaned != base:
@@ -156,16 +162,22 @@ class Registry:
             ids.insert(0, SETTINGS_ID)  # settings pinned first
         return [self._all[mid] for mid in ids]
 
-    def statusbar_ids(self) -> list[str]:
+    def statusbar_modules(self) -> list[Any]:
         """Modules that advertise status-bar content, in home order.
 
         The optional `status_items` method IS the advertisement: a module
         with nothing to publish simply doesn't define it, and gets
         neither a STATUS BAR toggle nor bar time.  Computed live — a
         module swapped into the registry mid-run is reflected here.
+        Returns the module objects home_order already resolved, so a
+        caller never re-indexes the registry by a module-supplied id.
         """
-        return [module.id for module in self.home_order()
+        return [module for module in self.home_order()
                 if callable(getattr(module, "status_items", None))]
+
+    def statusbar_ids(self) -> list[str]:
+        """Ids of the advertising modules, in home order."""
+        return [module.id for module in self.statusbar_modules()]
 
     def enabled_ids(self) -> list[str]:
         return list(self._enabled)

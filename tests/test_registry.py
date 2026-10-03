@@ -43,6 +43,14 @@ NO_STATUS_SOURCE = MODULE_SOURCE.replace(
 BROKEN_STATUS_SOURCE = MODULE_SOURCE.replace(
     "    def status_items(self, ctx):\n        return []",
     "    status_items = 3")
+ASYNC_STATUS_SOURCE = MODULE_SOURCE.replace(
+    "    def status_items(self, ctx):\n        return []",
+    "    async def status_items(self, ctx):\n        return []")
+# the edits must actually hit: a silent no-op would leave the "absent"
+# template defining status_items and void the coverage it stands for
+assert "status_items" not in NO_STATUS_SOURCE
+assert "status_items = 3" in BROKEN_STATUS_SOURCE
+assert "async def status_items" in ASYNC_STATUS_SOURCE
 
 
 def test_discovery_finds_valid_modules_sorted(tmp_path):
@@ -97,6 +105,15 @@ def test_discovery_rejects_a_non_callable_status_items(tmp_path, caplog):
     # module's bar content — the whole module is skipped, like any other
     # contract violation
     write_module(tmp_path, "broken_bar", source=BROKEN_STATUS_SOURCE)
+    assert discover(tmp_path) == []
+    assert "status_items" in caplog.text
+
+
+def test_discovery_rejects_an_async_status_items(tmp_path, caplog):
+    # a coroutine is callable, but the bar calls status_items
+    # synchronously — items.extend(coroutine) is a TypeError on the
+    # render path, so this too must fail loudly at boot
+    write_module(tmp_path, "asyncy", source=ASYNC_STATUS_SOURCE)
     assert discover(tmp_path) == []
     assert "status_items" in caplog.text
 
@@ -158,8 +175,10 @@ def test_statusbar_heal_does_not_loop_on_local_overlay_keys(tmp_path,
         json.dumps({"statusbar": {"ghost": False}}))
     registry = Registry([fake_module("clock")], Config(path))
     before = path.read_text()
+    generation = registry.config.generation
     registry.refresh()
     assert path.read_text() == before
+    assert registry.config.generation == generation  # no rewrite happened
 
 
 def test_registry_validates_module_namespaces(config, fake_module):

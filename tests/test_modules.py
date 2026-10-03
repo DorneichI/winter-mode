@@ -87,6 +87,25 @@ def test_settings_statusbar_schema_lists_only_advertisers_plus_rotation(
     assert "boston" not in view.schema
 
 
+def test_settings_statusbar_view_rebuilds_when_advertisers_change(
+        theme, fonts, ctx, config):
+    # the schema is derived live, so the cached FormView must be
+    # replaced when the advertiser set changes — a stale row's write
+    # would be rejected by the current validator (uncaught on touch)
+    settings = Settings()
+    clock = Clock()
+    registry = setup_registry(config, clock, Boston(), settings)
+    ctx = ctx(registry=registry)
+    settings.cards(ctx)
+    view = settings._device_views["statusbar"]
+    assert "clock" in view.schema
+    clock.status_items = None  # stops advertising at runtime
+    settings.cards(ctx)
+    rebuilt = settings._device_views["statusbar"]
+    assert rebuilt is not view
+    assert "clock" not in rebuilt.schema
+
+
 def test_settings_display_page_merges_theme_and_behavior(
         theme, fonts, ctx, config):
     settings = Settings()
