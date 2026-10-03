@@ -2,7 +2,7 @@
 
 Device-level cards (DISPLAY, STATUS BAR, SYSTEM) plus one card per
 module with a config_schema — all auto-generated FormViews or read-only
-InfoViews.  Tap a card, edit, [‹ BACK] out.
+InfoViews.  Tap a card, edit, ‹ BACK out.
 
 The device cards are built from `wintermode.device`, the same
 descriptors the web API serves, so the two surfaces always show the same

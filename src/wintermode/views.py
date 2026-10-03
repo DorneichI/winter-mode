@@ -31,11 +31,13 @@ from wintermode.schema import (
     visible,
 )
 from wintermode.widgets import (
-    draw_button,
-    draw_button_auto,
-    draw_paginator,
-    draw_scroller,
+    Button,
+    Rect,
+    button_auto,
     paginate,
+    paginator,
+    scroller,
+    tap,
     text_y,
     truncate,
 )
@@ -53,7 +55,7 @@ FORM_PAGE_MARGIN = 10
 # editable row kinds; "info" and "text" are read-only on the device
 ROW_KINDS = ("info", "bool", "choice", "int", "time", "text")
 
-# how a tapped row reports itself in view._rows: (rect, key, action)
+# how a tapped row reports itself in view._rows: (button, key, action)
 TAP_ACTIONS = {
     "bool": ("toggle",),
     "choice": ("cycle",),
@@ -80,22 +82,22 @@ class PagedMixin:
 
     def __init__(self) -> None:
         self.page = 0
-        self._paginator: dict[str, tuple | None] = {"prev": None, "next": None}
+        self._paginator: list[tuple[Button, str]] = []
         self._offset = 0
-        self._scroller: dict[str, tuple | None] = {"up": None, "down": None}
+        self._scroller: list[tuple[Button, str]] = []
 
     def _tap_paginator(self, x: int, y: int) -> bool:
-        for action, rect in self._paginator.items():
-            if rect and rect[0] <= x < rect[2] and rect[1] <= y < rect[3]:
-                self.page += 1 if action == "next" else -1
-                return True
+        action = tap(self._paginator, x, y)
+        if action is not None:
+            self.page += 1 if action == "next" else -1
+            return True
         return False
 
     def _tap_scroller(self, x: int, y: int) -> bool:
-        for action, rect in self._scroller.items():
-            if rect and rect[0] <= x < rect[2] and rect[1] <= y < rect[3]:
-                self._offset += 1 if action == "down" else -1
-                return True
+        action = tap(self._scroller, x, y)
+        if action is not None:
+            self._offset += 1 if action == "down" else -1
+            return True
         return False
 
 
@@ -106,7 +108,7 @@ class CardGrid(PagedMixin):
 
     def __init__(self) -> None:
         super().__init__()
-        self._hitboxes: dict[tuple, object] = {}
+        self._buttons: list[tuple[Button, object]] = []
 
     # --- subclass hooks ------------------------------------------------------
 
@@ -147,22 +149,24 @@ class CardGrid(PagedMixin):
         pages, self.page, page_cards = _paged(cards, self.page, CARD_PAGE_SIZE)
 
         rects = self._grid_rects(ctx)
-        self._hitboxes = {}
+        self._buttons = []
         for rect, (label, target) in zip(rects, page_cards, strict=False):
-            draw_button(draw, rect, label, ctx.fonts, ctx.theme)
-            self._hitboxes[rect] = target
+            button = Button(Rect(*rect), label)
+            button.draw(draw, ctx.fonts, ctx.theme)
+            self._buttons.append((button, target))
 
         x0, y0, x1, y1 = ctx.content
-        self._paginator = draw_paginator(
+        self._paginator = paginator(
             draw, (x0, y1 - PAGINATOR_H, x1, y1), self.page, pages,
             ctx.fonts, ctx.theme,
         )
         return True
 
     def on_tap(self, x: int, y: int, ctx: Ctx) -> bool:
-        for rect, target in self._hitboxes.items():
-            x0, y0, x1, y1 = rect
-            if x0 <= x < x1 and y0 <= y < y1:
+        # a card tap is consumed even when its target is None (the
+        # SETTINGS placeholder), so an explicit loop, not tap()
+        for button, target in self._buttons:
+            if button.contains(x, y):
                 self.on_card(target, ctx)
                 return True
         return self._tap_paginator(x, y)
@@ -222,8 +226,9 @@ class ListView(PagedMixin):
     frame via the app loop, so on_change never draws.
 
     `scroll = True` swaps pagination for vertical scrolling: rows are
-    drawn from a clamped offset and [▲] [▼] buttons appear automatically
-    whenever the list overflows — grey and inert at the ends.
+    drawn from a clamped offset and boxed ▲ ▼ buttons appear
+    automatically whenever the list overflows — grey and inert at the
+    ends.
     """
 
     title = "LIST"
@@ -248,7 +253,7 @@ class ListView(PagedMixin):
             self.on_change = on_change
         if on_select is not None:
             self.on_select = on_select
-        self._rows: list[tuple[tuple, str, str]] = []  # (rect, key, action)
+        self._rows: list[tuple[Button, str, str]] = []  # (button, key, action)
 
     # --- subclass hooks ------------------------------------------------------
 
@@ -292,13 +297,13 @@ class ListView(PagedMixin):
         strip = (x0, y1 - PAGINATOR_H, x1, y1)
         if self.scroll:
             visible_rows = self._scroll_visible(rows, per_page)
-            self._scroller = draw_scroller(
+            self._scroller = scroller(
                 draw, strip, self._offset, len(visible_rows), len(rows),
                 ctx.fonts, ctx.theme, size=SIZE_PAGINATOR,
             )
         else:
             pages, self.page, visible_rows = _paged(rows, self.page, per_page)
-            self._paginator = draw_paginator(
+            self._paginator = paginator(
                 draw, strip, self.page, pages,
                 ctx.fonts, ctx.theme, size=SIZE_PAGINATOR,
             )
@@ -351,21 +356,19 @@ class ListView(PagedMixin):
     def _row_bool(self, draw, ctx: Ctx, row: Row, top: int, bottom: int,
                   x1: int) -> None:
         # plain box; on = a white X, no inverse video
-        rect = draw_button_auto(
-            draw, x1 - 12, top + 4, ROW_H - 8,
-            "X" if row.value else " ", ctx.fonts, ctx.theme, size=SIZE_FORM,
-            min_width=44,
-        )
-        self._rows.append((rect, row.key, "toggle"))
+        button = button_auto(x1 - 12, top + 4, ROW_H - 8,
+                             "X" if row.value else " ", ctx.fonts,
+                             size=SIZE_FORM, min_width=44)
+        button.draw(draw, ctx.fonts, ctx.theme)
+        self._rows.append((button, row.key, "toggle"))
 
     def _row_choice(self, draw, ctx: Ctx, row: Row, top: int, bottom: int,
                     x1: int) -> None:
-        rect = draw_button_auto(
-            draw, x1 - 12, top + 4, ROW_H - 8,
-            f"{self.value_text(row)} [next ›]", ctx.fonts, ctx.theme,
-            size=SIZE_FORM,
-        )
-        self._rows.append((rect, row.key, "cycle"))
+        button = button_auto(x1 - 12, top + 4, ROW_H - 8,
+                             f"{self.value_text(row)} ›", ctx.fonts,
+                             size=SIZE_FORM)
+        button.draw(draw, ctx.fonts, ctx.theme)
+        self._rows.append((button, row.key, "cycle"))
 
     def _row_int(self, draw, ctx: Ctx, row: Row, top: int, bottom: int,
                  x1: int) -> None:
@@ -377,14 +380,16 @@ class ListView(PagedMixin):
         plus = (x1 - 12 - step_w, top + 4, x1 - 12, bottom - 4)
         minus = (plus[0] - value_w - 24 - step_w, top + 4,
                  plus[0] - value_w - 24, bottom - 4)
-        draw_button(draw, minus, "-", fonts, theme, size=SIZE_FORM)
-        draw_button(draw, plus, "+", fonts, theme, size=SIZE_FORM)
+        minus_button = Button(Rect(*minus), "-", size=SIZE_FORM)
+        plus_button = Button(Rect(*plus), "+", size=SIZE_FORM)
+        minus_button.draw(draw, fonts, theme)
+        plus_button.draw(draw, fonts, theme)
         fonts.draw_text(draw, (plus[0] - 12 - value_w,
                                text_y(fonts, value, top, bottom,
                                       size=SIZE_FORM)),
                         value, "regular", SIZE_FORM, theme.fg)
-        self._rows.append((minus, row.key, "minus"))
-        self._rows.append((plus, row.key, "plus"))
+        self._rows.append((minus_button, row.key, "minus"))
+        self._rows.append((plus_button, row.key, "plus"))
 
     def _row_time(self, draw, ctx: Ctx, row: Row, top: int, bottom: int,
                   x1: int) -> None:
@@ -402,9 +407,10 @@ class ListView(PagedMixin):
         cursor = left + text_w + 14
         for index, action in enumerate(blanks):
             rect = (cursor, top + 4, cursor + step_w, bottom - 4)
-            draw_button(draw, rect, "-" if action.endswith("-") else "+",
-                        fonts, theme, size=SIZE_FORM)
-            self._rows.append((rect, row.key, action))
+            button = Button(Rect(*rect), "-" if action.endswith("-") else "+",
+                            size=SIZE_FORM)
+            button.draw(draw, fonts, theme)
+            self._rows.append((button, row.key, action))
             cursor += step_w + (8 if index % 2 == 0 else 14)
 
     def _stepper_width(self, fonts) -> int:
@@ -415,8 +421,8 @@ class ListView(PagedMixin):
     # --- taps ---------------------------------------------------------------
 
     def on_tap(self, x: int, y: int, ctx: Ctx) -> bool:
-        for (rx0, ry0, rx1, ry1), key, action in self._rows:
-            if rx0 <= x < rx1 and ry0 <= y < ry1:
+        for button, key, action in self._rows:
+            if button.contains(x, y):
                 return self._apply(action, key, ctx)
         if self.scroll:
             return self._tap_scroller(x, y)
@@ -496,10 +502,11 @@ class PickerView(ListView):
     def _row_select(self, draw, ctx: Ctx, row: Row, top: int, bottom: int,
                     x1: int) -> None:
         """A picker row is a full-width button: the whole line is the target."""
-        rect = draw_button(draw, (ctx.content[0] + FORM_PAGE_MARGIN, top + 2,
-                                  x1 - FORM_PAGE_MARGIN, bottom - 2),
-                           row.label, ctx.fonts, ctx.theme, size=SIZE_FORM)
-        self._rows.append((rect, row.key, "select"))
+        button = Button(Rect(ctx.content[0] + FORM_PAGE_MARGIN, top + 2,
+                             x1 - FORM_PAGE_MARGIN, bottom - 2),
+                        row.label, size=SIZE_FORM)
+        button.draw(draw, ctx.fonts, ctx.theme)
+        self._rows.append((button, row.key, "select"))
 
     def _apply(self, action: str, key: str, ctx: Ctx) -> bool:
         if action != "select":
@@ -541,11 +548,12 @@ class ConfirmView(ListView):
 
     def _row_select(self, draw, ctx: Ctx, row: Row, top: int, bottom: int,
                     x1: int) -> None:
-        rect = draw_button(draw, (ctx.content[0] + FORM_PAGE_MARGIN, top + 2,
-                                  x1 - FORM_PAGE_MARGIN, bottom - 2),
-                           row.label, ctx.fonts, ctx.theme, size=SIZE_FORM,
-                           pressed=(row.key == "yes"))
-        self._rows.append((rect, row.key, "select"))
+        button = Button(Rect(ctx.content[0] + FORM_PAGE_MARGIN, top + 2,
+                             x1 - FORM_PAGE_MARGIN, bottom - 2),
+                        row.label, size=SIZE_FORM,
+                        pressed=(row.key == "yes"))
+        button.draw(draw, ctx.fonts, ctx.theme)
+        self._rows.append((button, row.key, "select"))
 
     def _apply(self, action: str, key: str, ctx: Ctx) -> bool:
         if action != "select":
@@ -619,7 +627,7 @@ class InfoView(ListView):
 
     def on_tap(self, x: int, y: int, ctx: Ctx) -> bool:
         # same tail as ListView: a scrolling info page is driven by its
-        # own [▲]/[▼], and its paginator is not drawn
+        # own ▲/▼, and its paginator is not drawn
         if self.scroll:
             return self._tap_scroller(x, y)
         return self._tap_paginator(x, y)

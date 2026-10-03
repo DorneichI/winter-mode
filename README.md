@@ -50,10 +50,11 @@ the Zero.
   (26 → 44 → 88 — the landing step is the largest clean-size multiple
   that fits the panel), holds, cuts to black for a beat, then in.
 - **The bar** — always on top: clock, rotating status items published
-  by modules, view title, `[‹ BACK]` `[⌂ HOME]`. Navigation is taps
-  only. No gestures: lists and grids paginate, and a list can opt into
-  vertical scrolling instead — `[▲] [▼]` buttons appear automatically
-  whenever it overflows, grey and inert at the ends.
+  by modules (plain dim text), view title, boxed ‹ BACK / ⌂ HOME
+  buttons. Navigation is taps only. No gestures: lists and grids
+  paginate, and a list can opt into vertical scrolling instead — boxed
+  ▲ ▼ buttons appear automatically whenever it overflows, grey and
+  inert at the ends.
 - **Modules** — CLOCK (big ticking time), BOSTON (the MBTA map + trip
   planning, below), and SETTINGS (the hub).
 - **Settings** — a card grid into every configurable thing: DISPLAY
@@ -84,8 +85,9 @@ mode waits for it, changing the mode re-queries, cancel/X abandons.
 While the [Google Maps Directions
 API](https://developers.google.com/maps/documentation/directions)
 answers, the alert shows "computing…", then the itineraries: one at a
-time with `[<] [done] [>]` (grey and inert at the ends), legs in a
-scrollable list, trips always leaving now. Every failure — unreachable
+time with boxed ‹ / done / › buttons (grey and inert at the ends), legs
+in a scrollable list, trips always leaving now. Every failure —
+unreachable
 network, rejected key, unknown address, no route — lands in the same
 alert as a descriptive message.
 

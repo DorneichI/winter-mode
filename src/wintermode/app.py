@@ -29,6 +29,7 @@ from wintermode.taps import TapTracker
 from wintermode.theme import Theme, effective_theme
 from wintermode.version import read_deployed_version
 from wintermode.views import HomeView
+from wintermode.widgets import Button, button_auto, tap
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ class WinterApp:
         self.last_touch = self.clock()[0]  # the sleep timer starts at boot
         self.actions: queue.Queue = queue.Queue()  # web POSTs land here
         self.web_port: int | None = None  # set once the web server binds
-        self._bar_hitboxes: list[tuple[tuple[int, int, int, int], str]] = []
+        self._bar_buttons: list[tuple[Button, str]] = []
 
     # --- context ----------------------------------------------------------
 
@@ -140,7 +141,7 @@ class WinterApp:
                 items.extend(module.status_items(ctx))
             rotate = self.config.data.get("statusbar_rotate", 0)
             for item in _rotate_items(items, wall, rotate):
-                label = f"[{item.text}]"
+                label = item.text  # plain text: status items are not buttons
                 label_w = self.fonts.textwidth(label, "regular", SIZE_BAR)
                 if x + label_w > width // 2 - 80:
                     break  # the bar is full; the title zone is sacred
@@ -155,30 +156,26 @@ class WinterApp:
             title, "regular", SIZE_BAR, theme.fg,
         )
 
-        self._bar_hitboxes = []
+        self._bar_buttons = []
         if len(self.nav) > 1:  # back/home exist only below the root
-            home = "[⌂ HOME]"
-            home_w = self.fonts.textwidth(home, "regular", SIZE_BAR)
-            home_x = width - home_w - 8
-            self.fonts.draw_text(draw, (home_x, 5), home, "regular",
-                                 SIZE_BAR, theme.accent)
-            self._bar_hitboxes.append(((home_x, 0, width, BAR_H), "home"))
+            home = button_auto(width - 8, 2, BAR_H - 4, "⌂ HOME", self.fonts,
+                               size=SIZE_BAR)
+            home.draw(draw, self.fonts, self.theme)
+            self._bar_buttons.append((home, "home"))
 
-            back = "[‹ BACK]"
-            back_w = self.fonts.textwidth(back, "regular", SIZE_BAR)
-            back_x = home_x - back_w - 10
-            self.fonts.draw_text(draw, (back_x, 5), back, "regular",
-                                 SIZE_BAR, theme.accent)
-            self._bar_hitboxes.append(((back_x, 0, home_x, BAR_H), "back"))
+            back = button_auto(int(home.hit.x0) - 10, 2, BAR_H - 4, "‹ BACK",
+                               self.fonts, size=SIZE_BAR)
+            back.draw(draw, self.fonts, self.theme)
+            self._bar_buttons.append((back, "back"))
 
-    def _bar_tap(self, x: int) -> bool:
-        for (x0, _y0, x1, _y1), action in self._bar_hitboxes:
-            if x0 <= x < x1:
-                if action == "back":
-                    self.nav.pop()
-                else:
-                    self.nav.home()
-                return True
+    def _bar_tap(self, x: int, y: int) -> bool:
+        action = tap(self._bar_buttons, x, y)
+        if action == "back":
+            self.nav.pop()
+            return True
+        if action == "home":
+            self.nav.home()
+            return True
         return False
 
     # --- main loop ---------------------------------------------------------
@@ -243,7 +240,7 @@ class WinterApp:
         for kind, x, y in events:
             if y < BAR_H:
                 if kind == "tap":
-                    dirty |= self._bar_tap(x)
+                    dirty |= self._bar_tap(x, y)
                 continue
             if kind == "tap":
                 if self.nav.top.on_tap(x, y, self._ctx(now, points, wall)):

@@ -10,6 +10,11 @@ def make_canvas(theme):
     return image, ImageDraw.Draw(image)
 
 
+def tap_center(view, button, ctx):
+    x, y = button.hit.center()
+    assert view.on_tap(int(x), int(y), ctx) is True
+
+
 def render_home(theme, fonts, ctx_factory, registry=None, page=0):
     ctx = ctx_factory(registry=registry)
     view = HomeView(registry=registry, config=ctx.config)
@@ -21,7 +26,7 @@ def render_home(theme, fonts, ctx_factory, registry=None, page=0):
 
 def test_static_settings_card_when_no_settings_module(theme, fonts, ctx):
     _, canvas, ctx = render_home(theme, fonts, ctx)
-    # the settings card is the first hitbox target
+    # the settings card is the first button target
     assert list(ctx.nav.stack)[0].title == "HOME"
     assert len(HomeView(registry=None, config=None)._cards()) == 1
 
@@ -53,17 +58,21 @@ def test_grid_paginates_when_cards_exceed_one_page(
     from wintermode.registry import Registry
     registry = Registry(modules, config)
     view, canvas, ctx = render_home(theme, fonts, ctx, registry=registry)
-    assert view._paginator["next"] is not None
-    assert view._paginator["prev"] is None
-    assert len(view._hitboxes) == CARD_PAGE_SIZE
+    nxt = next(b for b, a in view._paginator if a == "next")
+    prev = next(b for b, a in view._paginator if a == "prev")
+    assert nxt.enabled
+    assert not prev.enabled
+    assert len(view._buttons) == CARD_PAGE_SIZE
 
     # tap next -> the app loop re-renders -> page two shows one card
-    nx0, ny0, nx1, ny1 = view._paginator["next"]
-    assert view.on_tap((nx0 + nx1) // 2, (ny0 + ny1) // 2, ctx) is True
+    tap_center(view, nxt, ctx)
     assert view.page == 1
     view.render(ImageDraw.Draw(canvas), ctx)  # what the loop does next
-    assert view._paginator["prev"] is not None
-    assert len(view._hitboxes) == 1
+    prev = next(b for b, a in view._paginator if a == "prev")
+    nxt = next(b for b, a in view._paginator if a == "next")
+    assert prev.enabled
+    assert not nxt.enabled
+    assert len(view._buttons) == 1
 
 
 def test_tapping_a_module_card_pushes_it(theme, fonts, ctx, registry):
@@ -73,9 +82,8 @@ def test_tapping_a_module_card_pushes_it(theme, fonts, ctx, registry):
     # the clock card is the second card (after static SETTINGS)
     cards = view._cards()
     clock_index = [label for label, _ in cards].index("CLOCK")
-    rect = list(view._hitboxes)[clock_index]
-    x, y = (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
-    assert view.on_tap(x, y, ctx) is True
+    button = view._buttons[clock_index][0]
+    tap_center(view, button, ctx)
     assert len(ctx.nav) == 2
     assert ctx.nav.top.id == "clock"
 
@@ -114,10 +122,9 @@ def make_form(ctx):
 
 
 def tap_row(view, ctx, key, action):
-    for rect, row_key, row_action in view._rows:
+    for button, row_key, row_action in view._rows:
         if row_key == key and row_action == action:
-            x, y = (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
-            assert view.on_tap(x, y, ctx) is True
+            tap_center(view, button, ctx)
             return
     raise AssertionError(f"no {action!r} row for {key!r}")
 
@@ -173,7 +180,8 @@ def test_form_masks_write_only_values(theme, fonts, ctx):
 def test_form_rows_fit_in_content(theme, fonts, ctx):
     c = ctx(registry=None)
     view, writes, values = make_form(c)
-    for (x0, y0, x1, y1), _key, _action in view._rows:
+    for button, _key, _action in view._rows:
+        x0, y0, x1, y1 = button.hit
         assert c.content[0] <= x0 and x1 <= c.content[2]
         assert c.content[1] <= y0 and y1 <= c.content[3]
 
@@ -197,25 +205,26 @@ def test_form_int_steppers_are_equal_size(theme, fonts, ctx):
     c = ctx(registry=None)
     view, _writes, _values = make_form(c)
     minus = plus = None
-    for rect, key, action in view._rows:
+    for button, key, action in view._rows:
         if key == "count" and action == "minus":
-            minus = rect
+            minus = button
         if key == "count" and action == "plus":
-            plus = rect
+            plus = button
     assert minus and plus
-    assert minus[2] - minus[0] == plus[2] - plus[0]  # identical widths
+    # identical widths
+    assert minus.hit.x1 - minus.hit.x0 == plus.hit.x1 - plus.hit.x0
 
 
 def test_form_choice_label_says_next(theme, fonts, ctx):
     c = ctx(registry=None)
     view, _writes, values = make_form(c)
     view.render(ImageDraw.Draw(Image.new("RGB", (800, 480))), c)
-    # the choice button sizes itself to its "[next ›]" label exactly
-    for rect, key, _action in view._rows:
+    # the choice button sizes itself to its "count ›" label exactly
+    for button, key, _action in view._rows:
         if key == "mode":
-            label = f"{values['mode']} [next ›]"
+            label = f"{values['mode']} ›"
             expected = c.fonts.textwidth(label, "regular", 26) + 24
-            assert rect[2] - rect[0] == expected
+            assert button.hit.x1 - button.hit.x0 == expected
             return
     raise AssertionError("no cycle row")
 
@@ -232,7 +241,7 @@ def test_form_time_row_steps_and_wraps(theme, fonts, ctx):
 
     view = FormView("T", schema, lambda: dict(values), set_value)
     view.render(ImageDraw.Draw(Image.new("RGB", (800, 480))), c)
-    actions = {action for _r, _k, action in view._rows}
+    actions = {action for _b, _k, action in view._rows}
     assert actions == {"hour-", "hour+", "minute-", "minute+"}
     tap_row(view, c, "t", "minute+")
     assert writes == [("t", "07:05")]
@@ -259,12 +268,12 @@ def test_form_hides_conditional_fields(theme, fonts, ctx):
     view = FormView("T", schema, lambda: dict(values), set_value)
     canvas, draw = make_canvas(theme)
     view.render(draw, c)
-    keys = {key for _rect, key, _action in view._rows}
+    keys = {key for _b, key, _action in view._rows}
     assert keys == {"theme"}  # light_from hidden while theme is dark
 
     tap_row(view, c, "theme", "cycle")  # -> auto
     view.render(draw, c)  # the app re-renders after a consumed tap
-    keys = {key for _rect, key, _action in view._rows}
+    keys = {key for _b, key, _action in view._rows}
     assert keys == {"theme", "light_from"}  # now it appears
 
     # the value survives hidden periods — it is never deleted
@@ -293,7 +302,7 @@ def test_stale_page_renders_content_not_blank(theme, fonts, ctx, config):
     assert view.page == 0
     assert view._rows  # a stale index must not draw an empty page
     # every interactive field is on the page (the text row is read-only)
-    assert {key for _rect, key, _action in view._rows} == {
+    assert {key for _b, key, _action in view._rows} == {
         "flag", "mode", "count"}
 
 
@@ -309,12 +318,11 @@ def test_list_view_is_a_reusable_primitive(theme, fonts, ctx):
     c = ctx(registry=None)
     canvas, draw = make_canvas(theme)
     view.render(draw, c)
-    actions = {action for _r, _k, action in view._rows}
+    actions = {action for _b, _k, action in view._rows}
     assert actions == {"minus", "plus"}
     assert view.on_tap(759, 100, c) is False  # info row is inert
-    plus = next(r for r, k, a in view._rows if a == "plus")
-    assert view.on_tap((plus[0] + plus[2]) // 2, (plus[1] + plus[3]) // 2,
-                       c) is True
+    plus = next(b for b, k, a in view._rows if a == "plus")
+    tap_center(view, plus, c)
     assert writes == [("a", 2)]
     assert view.title == "DEMO"
 
@@ -336,11 +344,14 @@ def make_scroll_view(ctx, count):
     return ScrollList("SCROLL", rows)
 
 
+def scroller_button(view, direction):
+    return next(b for b, a in view._scroller if a == direction)
+
+
 def scroller_tap(view, ctx, direction):
-    rect = view._scroller[direction]
-    assert rect is not None, f"{direction} should be tappable"
-    assert view.on_tap((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2,
-                       ctx) is True
+    button = scroller_button(view, direction)
+    assert button.enabled, f"{direction} should be tappable"
+    tap_center(view, button, ctx)
 
 
 def test_scroll_list_shows_only_down_button_at_top(theme, fonts, ctx):
@@ -348,9 +359,9 @@ def test_scroll_list_shows_only_down_button_at_top(theme, fonts, ctx):
     view = make_scroll_view(c, 15)  # 10 rows fit
     canvas, draw = make_canvas(theme)
     view.render(draw, c)
-    assert view._scroller["down"] is not None
-    assert view._scroller["up"] is None
-    assert {key for _rect, key, _action in view._rows} == {
+    assert scroller_button(view, "down").enabled
+    assert not scroller_button(view, "up").enabled
+    assert {key for _b, key, _action in view._rows} == {
         f"r{i}" for i in range(10)}  # 10 of 15 rows on screen
 
 
@@ -362,7 +373,7 @@ def test_scroll_list_scrolls_one_row_per_tap(theme, fonts, ctx):
     scroller_tap(view, c, "down")
     view.render(draw, c)  # the loop re-renders after a consumed tap
     assert view._offset == 1
-    assert {key for _rect, key, _action in view._rows} == {
+    assert {key for _b, key, _action in view._rows} == {
         f"r{i}" for i in range(1, 11)}
 
 
@@ -371,8 +382,11 @@ def test_scroll_list_up_button_inert_at_top(theme, fonts, ctx):
     view = make_scroll_view(c, 15)
     canvas, draw = make_canvas(theme)
     view.render(draw, c)
-    # a tap where the up button would sit is unconsumed at the top
-    assert view._scroller["up"] is None
+    # the up button is drawn grey and a tap on it is unconsumed
+    up = scroller_button(view, "up")
+    assert not up.enabled
+    x, y = up.hit.center()
+    assert view.on_tap(int(x), int(y), c) is False
 
 
 def test_scroll_list_ends_with_only_up_button(theme, fonts, ctx):
@@ -384,9 +398,9 @@ def test_scroll_list_ends_with_only_up_button(theme, fonts, ctx):
         scroller_tap(view, c, "down")
         view.render(draw, c)
     assert view._offset == 5  # 15 rows - 10 visible
-    assert view._scroller["down"] is None
-    assert view._scroller["up"] is not None
-    assert {key for _rect, key, _action in view._rows} == {
+    assert not scroller_button(view, "down").enabled
+    assert scroller_button(view, "up").enabled
+    assert {key for _b, key, _action in view._rows} == {
         f"r{i}" for i in range(5, 15)}  # the tail is on screen
 
 
@@ -395,7 +409,7 @@ def test_scroll_list_without_overflow_has_no_buttons(theme, fonts, ctx):
     view = make_scroll_view(c, 3)
     canvas, draw = make_canvas(theme)
     view.render(draw, c)
-    assert view._scroller == {"up": None, "down": None}
+    assert view._scroller == []
     # nothing in the scroller strip consumes a tap
     assert view.on_tap(400, 470, c) is False
 
@@ -412,7 +426,7 @@ def test_scroll_list_clamps_offset_before_slicing(theme, fonts, ctx):
     view._rows_fn = lambda _ctx: [Row("r0", "row 0", kind="info")]
     view.render(draw, c)
     assert view._offset == 0
-    assert view._scroller == {"up": None, "down": None}
+    assert view._scroller == []
 
 
 def test_scroll_list_rows_still_fire_actions(theme, fonts, ctx):
@@ -430,9 +444,8 @@ def test_scroll_list_rows_still_fire_actions(theme, fonts, ctx):
     c = ctx(registry=None)
     canvas, draw = make_canvas(theme)
     view.render(draw, c)
-    plus = next(r for r, k, a in view._rows if a == "plus")
-    assert view.on_tap((plus[0] + plus[2]) // 2, (plus[1] + plus[3]) // 2,
-                       c) is True
+    plus = next(b for b, k, a in view._rows if a == "plus")
+    tap_center(view, plus, c)
     assert writes == [("a", 2)]
 
 
@@ -446,10 +459,9 @@ def test_picker_picks_and_pops(theme, fonts, ctx):
     c.nav.push(picker)
     canvas, draw = make_canvas(theme)
     picker.render(draw, c)
-    assert {key for _r, key, _a in picker._rows} == {"light"}  # current hidden
-    rect = picker._rows[0][0]
-    assert picker.on_tap((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2,
-                         c) is True
+    assert {key for _b, key, _a in picker._rows} == {"light"}  # current hidden
+    button = picker._rows[0][0]
+    tap_center(picker, button, c)
     assert picked == ["light"]
     assert len(c.nav) == 1  # it popped itself
 
@@ -462,7 +474,7 @@ def test_picker_accepts_value_label_pairs(theme, fonts, ctx):
                         lambda value, cc: None)
     canvas, draw = make_canvas(theme)
     picker.render(draw, c)
-    assert {key for _r, key, _a in picker._rows} == {"26", "44"}
+    assert {key for _b, key, _a in picker._rows} == {"26", "44"}
     assert picker._pick["44"] == 44
 
 
@@ -476,9 +488,9 @@ def test_confirm_view_confirms_and_pops(theme, fonts, ctx):
     c.nav.push(dialog)
     canvas, draw = make_canvas(theme)
     dialog.render(draw, c)
-    assert {action for _r, _k, action in dialog._rows} == {"select"}
-    no = next(r for r, k, _a in dialog._rows if k == "no")
-    assert dialog.on_tap((no[0] + no[2]) // 2, (no[1] + no[3]) // 2, c) is True
+    assert {action for _b, _k, action in dialog._rows} == {"select"}
+    no = next(b for b, k, _a in dialog._rows if k == "no")
+    tap_center(dialog, no, c)
     assert confirmed == []  # cancel does not confirm
     assert len(c.nav) == 1
 
@@ -497,21 +509,21 @@ def test_the_stepper_value_and_buttons_share_a_centre(theme, fonts, ctx):
     canvas, draw = make_canvas(theme)
     view.render(draw, c)
 
-    minus = next(r for r, k, a in view._rows if a == "minus")
-    plus = next(r for r, k, a in view._rows if a == "plus")
-    y0, y1 = minus[1], minus[3]
+    minus = next(b for b, k, a in view._rows if a == "minus")
+    plus = next(b for b, k, a in view._rows if a == "plus")
+    y0, y1 = minus.hit.y0, minus.hit.y1
     band_centre = (y0 + y1) / 2
 
     def ink_centre(x_range):
-        rows = range(y0 + 1, y1 - 1)  # inside the 1px border
+        rows = range(int(y0) + 1, int(y1) - 1)  # inside the 1px border
         ys = [y for y in rows
               if any(canvas.getpixel((x, y)) != c.theme.bg for x in x_range)]
         return (min(ys) + max(ys)) / 2
 
     for label, x_range in (
-        ("-", range(minus[0] + 4, minus[2] - 4)),
-        ("+", range(plus[0] + 4, plus[2] - 4)),
-        ("value", range(minus[2] + 2, plus[0] - 2)),
+        ("-", range(int(minus.hit.x0) + 4, int(minus.hit.x1) - 4)),
+        ("+", range(int(plus.hit.x0) + 4, int(plus.hit.x1) - 4)),
+        ("value", range(int(minus.hit.x1) + 2, int(plus.hit.x0) - 2)),
     ):
         assert abs(ink_centre(x_range) - band_centre) <= 2.5, label
 
@@ -529,13 +541,14 @@ def test_a_secret_row_ignores_its_stepper(theme, fonts, ctx, config):
     c = ctx(registry=None)
     canvas, draw = make_canvas(theme)
     view.render(draw, c)
-    _rect, key, action = next(r for r in view._rows if r[2] == "plus")
-    view.on_tap((_rect[0] + _rect[2]) // 2, (_rect[1] + _rect[3]) // 2, c)
+    button, _key, _action = next(r for r in view._rows if r[2] == "plus")
+    x, y = button.hit.center()
+    view.on_tap(int(x), int(y), c)
     assert config.namespace("door")["pin"] == 42  # untouched
 
 
 def test_a_scrolling_info_page_uses_its_scroller(theme, fonts, ctx):
-    """InfoView inherits the scroll path: with scroll on, the [▼] it
+    """InfoView inherits the scroll path: with scroll on, the ▼ button it
     draws is the control that moves it."""
 
     class Long(InfoView):
@@ -545,8 +558,6 @@ def test_a_scrolling_info_page_uses_its_scroller(theme, fonts, ctx):
     view = Long("LONG", [(f"row {i}", lambda i=i: str(i)) for i in range(15)])
     canvas, draw = make_canvas(theme)
     view.render(draw, c)
-    rect = view._scroller["down"]
-    assert rect is not None
-    assert view.on_tap((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2,
-                       c) is True
+    down = scroller_button(view, "down")
+    tap_center(view, down, c)
     assert view._offset == 1

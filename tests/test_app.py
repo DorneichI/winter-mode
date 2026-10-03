@@ -57,7 +57,7 @@ def test_second_boundary_redraws_bar(make_app):
 def test_bar_buttons_hidden_at_root_and_tap_is_ignored(make_app, point):
     app, lcd, touch, _clock = make_app()
     present(app, lcd)
-    assert app._bar_hitboxes == []
+    assert app._bar_buttons == []
     touch.script = [[point(790, 10)]]  # tap in the bar region at root
     assert app._step() is False
     assert len(lcd.calls) == 1  # nothing new presented
@@ -68,17 +68,15 @@ def test_back_button_pops_to_root(make_app, point):
     app._step()
     app.nav.push(HomeView())
     app._step()  # stack change -> re-render
-    assert app._bar_hitboxes, "buttons must exist below the root"
+    assert app._bar_buttons, "buttons must exist below the root"
 
-    back_x = 0
-    for (x0, _y0, x1, _y1), action in app._bar_hitboxes:
-        if action == "back":
-            back_x = (x0 + x1) // 2
+    back = next(b for b, a in app._bar_buttons if a == "back")
+    back_x = int(back.hit.center()[0])
     touch.script = [[point(back_x, 10)], []]  # down, then finger gone
     app._step()
     app._step()
     assert len(app.nav) == 1
-    assert app._bar_hitboxes == []  # hidden again at root
+    assert app._bar_buttons == []  # hidden again at root
 
 
 def test_home_button_pops_to_root(make_app, point):
@@ -88,10 +86,8 @@ def test_home_button_pops_to_root(make_app, point):
     app.nav.push(HomeView())
     app._step()
 
-    home_x = 0
-    for (x0, _y0, x1, _y1), action in app._bar_hitboxes:
-        if action == "home":
-            home_x = (x0 + x1) // 2
+    home = next(b for b, a in app._bar_buttons if a == "home")
+    home_x = int(home.hit.center()[0])
     touch.script = [[point(home_x, 10)], []]  # down, then finger gone
     app._step()
     app._step()

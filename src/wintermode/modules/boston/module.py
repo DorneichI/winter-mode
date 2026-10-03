@@ -27,10 +27,12 @@ from wintermode.context import Ctx
 from wintermode.fonts import SIZE_FORM
 from wintermode.views import ROW_H
 from wintermode.widgets import (
-    draw_button,
-    draw_button_auto,
-    draw_circle,
-    draw_scroller,
+    Button,
+    Circle,
+    Rect,
+    button_auto,
+    scroller,
+    tap,
     text_y,
     truncate,
 )
@@ -75,10 +77,6 @@ SCROLLER_H = 26
 BODY_MARGIN = 8
 
 
-def _inside(rect, x: int, y: int) -> bool:
-    return rect is not None and rect[0] <= x < rect[2] and rect[1] <= y < rect[3]
-
-
 class Boston:
     id = "boston"
     title = "BOSTON"
@@ -90,7 +88,7 @@ class Boston:
         self._stations: dict[str, dict] = {}
         self._edges: list[tuple[dict, dict, list[str]]] = []
         self._load_graph()
-        self._hitboxes: dict[tuple, str] = {}
+        self._station_buttons: list[tuple[Button, str]] = []
         self._alert: TripAlert | None = None
         self._seq = 0  # query generation counter
         self._queue: queue.Queue = queue.Queue()
@@ -170,13 +168,16 @@ class Boston:
         for a, b, colors in self._edges:
             self._draw_edge(draw, self._place(a, ctx), self._place(b, ctx),
                             colors)
-        self._hitboxes = {}
+        self._station_buttons = []
         for v in self._stations.values():
             cx, cy = self._place(v, ctx)
-            draw_circle(draw, (cx, cy), STATION_RADIUS, fill=ctx.theme.bg,
-                        outline=ctx.theme.fg, width=2)
-            self._hitboxes[(cx - HIT_PAD, cy - HIT_PAD, cx + HIT_PAD,
-                            cy + HIT_PAD)] = v["id"]
+            # hit at HIT_PAD radius, but paint only the 8px dot: a bg
+            # fill at hit radius would erase the track lines around it
+            button = Button(Circle(cx, cy, HIT_PAD),
+                            border=Circle(cx, cy, STATION_RADIUS),
+                            border_color="fg", border_width=2)
+            button.draw(draw, ctx.fonts, ctx.theme)
+            self._station_buttons.append((button, v["id"]))
         return True
 
     def _draw_edge(self, draw, p0: tuple[float, float],
@@ -208,16 +209,17 @@ class Boston:
     def on_tap(self, x: int, y: int, ctx: Ctx) -> bool:
         # the nearest station center within HIT_PAD wins: downtown
         # stations are closer than a hitbox apart, so overlap order must
-        # not decide the trip
+        # not decide the trip.  `<=` keeps the tie rule: the station
+        # appended first stays.
         best = None
         bestd = HIT_PAD
-        for v in self._stations.values():
-            cx, cy = self._place(v, ctx)
+        for button, vid in self._station_buttons:
+            cx, cy = button.hit.center()
             d = math.hypot(cx - x, cy - y)
             if d <= bestd:
-                best, bestd = v, d
+                best, bestd = vid, d
         if best is not None:
-            self._start_trip(best["id"], ctx)
+            self._start_trip(best, ctx)
             return True
         return False
 
@@ -248,7 +250,7 @@ class Boston:
         self._alert = None
 
     def _note_alert_gone(self, ctx: Ctx) -> None:
-        # the bar's [‹ BACK] pops the alert without a callback — detect it
+        # the bar's ‹ BACK pops the alert without a callback — detect it
         if self._alert is not None and self._alert not in ctx.nav.stack:
             self._abandon()
 
@@ -299,10 +301,11 @@ class Boston:
 class TripAlert:
     """The trip dialog pushed on station tap.
 
-    States: confirm (from/to + cycling mode picker, [cancel] [ok]) —
+    States: confirm (from/to + cycling mode picker, cancel/ok buttons) —
     computing (the query is in flight; interval=1 re-renders each second
     so the result is picked up promptly) — results (one itinerary at a
-    time, scrollable legs, [<] [done] [>]) — error (message, [done]).
+    time, scrollable legs, </done/> buttons) — error (message, done
+    button).
     """
 
     title = "TRIP"
@@ -332,10 +335,7 @@ class TripAlert:
         self._trips = []
         self._index = 0
         self._leg_offset = 0
-        self._footer: dict[str, tuple | None] = {}
-        self._x_rect: tuple | None = None
-        self._mode_rect: tuple | None = None
-        self._scroller: dict[str, tuple | None] = {"up": None, "down": None}
+        self._buttons: list[tuple[Button, str]] = []
 
     # --- state transitions ---------------------------------------------------
 
@@ -383,15 +383,13 @@ class TripAlert:
             if result is not None:
                 if result[0] == "ok":
                     if self._state == "confirm":
-                        self._pending = result[1]  # reveal on [ok]
+                        self._pending = result[1]  # reveal on ok
                     else:
                         self._apply_trips(result[1])
                 else:
                     self._fail(result[1])
         draw.rectangle(ctx.content, fill=ctx.theme.bg)
-        self._footer = {}
-        self._mode_rect = None
-        self._scroller = {"up": None, "down": None}
+        self._buttons = []
         self._draw_header(draw, ctx)
         if self._state == "confirm":
             self._draw_confirm(draw, ctx)
@@ -415,9 +413,10 @@ class TripAlert:
                                text_y(fonts, title, y0, y0 + HEADER_H,
                                       size=SIZE_FORM)),
                         title, "regular", SIZE_FORM, theme.fg)
-        self._x_rect = draw_button_auto(draw, x1 - 12, y0 + 4, HEADER_H - 8,
-                                        "X", fonts, theme, size=SIZE_FORM,
-                                        min_width=40)
+        x_button = button_auto(x1 - 12, y0 + 4, HEADER_H - 8, "X", fonts,
+                               size=SIZE_FORM, min_width=40)
+        x_button.draw(draw, fonts, theme)
+        self._buttons.append((x_button, "x"))
         draw.line((x0, y0 + HEADER_H, x1, y0 + HEADER_H),
                   fill=theme.border)
 
@@ -442,9 +441,11 @@ class TripAlert:
         top += ROW_H
         self._row(draw, ctx, top, "mode", theme.dim)
         x1 = ctx.content[2]
-        self._mode_rect = draw_button_auto(
-            draw, x1 - 12, top + 4, ROW_H - 8,
-            f"{self._mode} [next ›]", ctx.fonts, theme, size=SIZE_FORM)
+        mode_button = button_auto(x1 - 12, top + 4, ROW_H - 8,
+                                  f"{self._mode} ›", ctx.fonts,
+                                  size=SIZE_FORM)
+        mode_button.draw(draw, ctx.fonts, theme)
+        self._buttons.append((mode_button, "mode"))
         top += ROW_H
         self._row(draw, ctx, top, "leaving now", theme.dim)
 
@@ -506,9 +507,9 @@ class TripAlert:
         for i, text in enumerate(rows[self._leg_offset:
                                       self._leg_offset + per_page]):
             self._row(draw, ctx, legs_top + i * ROW_H, text, theme.fg)
-        self._scroller = draw_scroller(
+        self._buttons.extend(scroller(
             draw, scroller_strip, self._leg_offset, per_page, len(rows),
-            ctx.fonts, theme)
+            ctx.fonts, theme))
 
     def _draw_error(self, draw, ctx: Ctx) -> None:
         theme = ctx.theme
@@ -539,38 +540,35 @@ class TripAlert:
         cursor = x0 + (x1 - x0 - total) / 2
         for action, enabled in labels:
             rect = (cursor, strip_top + 4, cursor + width, strip_top + height)
-            draw_button(draw, rect, action, fonts, theme, size=SIZE_FORM,
-                        enabled=enabled)
-            # disabled keys stay present as None: grey and inert at the ends
-            self._footer[action] = rect if enabled else None
+            button = Button(Rect(*rect), action, size=SIZE_FORM,
+                            enabled=enabled)
+            button.draw(draw, fonts, theme)
+            # disabled buttons stay present: grey and inert at the ends
+            self._buttons.append((button, action))
             cursor += width + gap
 
     def on_tap(self, x: int, y: int, ctx: Ctx) -> bool:
-        if _inside(self._x_rect, x, y):
+        # one flat list: the header, body and footer zones never
+        # overlap, and state gating is by construction (the mode button
+        # exists only in confirm, the scroller only in results)
+        action = tap(self._buttons, x, y)
+        if action is None:
+            return False
+        if action in ("x", "cancel", "done"):
             self._dismiss(ctx)
-            return True
-        if self._state == "confirm" and _inside(self._mode_rect, x, y):
+        elif action == "mode":
             self._cycle_mode()
-            return True
-        for action, rect in self._footer.items():
-            if _inside(rect, x, y):
-                if action == "ok":
-                    self._confirm(ctx)
-                elif action == "cancel" or action == "done":
-                    self._dismiss(ctx)
-                elif action == "<":
-                    self._index -= 1
-                    self._leg_offset = 0
-                elif action == ">":
-                    self._index += 1
-                    self._leg_offset = 0
-                return True
-        if self._state == "results":
-            for direction, rect in self._scroller.items():
-                if _inside(rect, x, y):
-                    self._leg_offset += 1 if direction == "down" else -1
-                    return True
-        return False
+        elif action == "ok":
+            self._confirm(ctx)
+        elif action == "<":
+            self._index -= 1
+            self._leg_offset = 0
+        elif action == ">":
+            self._index += 1
+            self._leg_offset = 0
+        else:  # "up" / "down"
+            self._leg_offset += 1 if action == "down" else -1
+        return True
 
 
 MODULE = Boston()
