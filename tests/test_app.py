@@ -57,7 +57,7 @@ def test_second_boundary_redraws_bar(make_app):
 def test_bar_buttons_hidden_at_root_and_tap_is_ignored(make_app, point):
     app, lcd, touch, _clock = make_app()
     present(app, lcd)
-    assert app._bar_hitboxes == []
+    assert app._bar_buttons == []
     touch.script = [[point(790, 10)]]  # tap in the bar region at root
     assert app._step() is False
     assert len(lcd.calls) == 1  # nothing new presented
@@ -68,17 +68,15 @@ def test_back_button_pops_to_root(make_app, point):
     app._step()
     app.nav.push(HomeView())
     app._step()  # stack change -> re-render
-    assert app._bar_hitboxes, "buttons must exist below the root"
+    assert app._bar_buttons, "buttons must exist below the root"
 
-    back_x = 0
-    for (x0, _y0, x1, _y1), action in app._bar_hitboxes:
-        if action == "back":
-            back_x = (x0 + x1) // 2
+    back = next(b for b, a in app._bar_buttons if a == "back")
+    back_x = int(back.hit.center()[0])
     touch.script = [[point(back_x, 10)], []]  # down, then finger gone
     app._step()
     app._step()
     assert len(app.nav) == 1
-    assert app._bar_hitboxes == []  # hidden again at root
+    assert app._bar_buttons == []  # hidden again at root
 
 
 def test_home_button_pops_to_root(make_app, point):
@@ -88,14 +86,64 @@ def test_home_button_pops_to_root(make_app, point):
     app.nav.push(HomeView())
     app._step()
 
-    home_x = 0
-    for (x0, _y0, x1, _y1), action in app._bar_hitboxes:
-        if action == "home":
-            home_x = (x0 + x1) // 2
+    home = next(b for b, a in app._bar_buttons if a == "home")
+    home_x = int(home.hit.center()[0])
     touch.script = [[point(home_x, 10)], []]  # down, then finger gone
     app._step()
     app._step()
     assert len(app.nav) == 1
+
+
+def test_bar_button_hits_the_whole_bar_cell(make_app, point):
+    """The bar consumes every y < BAR_H tap, so the hit must cover the cell."""
+    app, lcd, touch, _clock = make_app()
+    app._step()
+    app.nav.push(HomeView())
+    app._step()
+
+    # the outermost row/column of the bar cell still navigates home
+    touch.script = [[point(795, 0)], []]
+    app._step()
+    app._step()
+    assert len(app.nav) == 1
+
+
+def test_bar_hit_strips_do_not_move_from_the_old_labels(make_app, point):
+    """The strips keep the bracketed-label boundaries: back ..680, home 680.."""
+    # left of the drawn HOME box, inside the old HOME text's strip
+    app, lcd, touch, _clock = make_app()
+    app._step()
+    app.nav.push(HomeView())
+    app.nav.push(HomeView())
+    app._step()
+    assert len(app.nav) == 3
+    touch.script = [[point(682, 15)], []]
+    app._step()
+    app._step()
+    assert len(app.nav) == 1  # home — not back, which is where the box starts
+
+    # under the old "[‹ BACK]" strip, left of the drawn back box
+    app, lcd, touch, _clock = make_app()
+    app._step()
+    app.nav.push(HomeView())
+    app.nav.push(HomeView())
+    app._step()
+    touch.script = [[point(562, 15)], []]
+    app._step()
+    app._step()
+    assert len(app.nav) == 2  # back — one level, not home
+
+
+def test_bar_labels_use_the_accent_token(make_app, point):
+    app, lcd, touch, _clock = make_app()
+    app._step()
+    app.nav.push(HomeView())
+    app._step()
+    assert app._bar_buttons
+    assert {b.label_color for b, _a in app._bar_buttons} == {"accent"}
+    colors = {app.canvas.getpixel((x, y))
+              for x in range(800) for y in range(BAR_H)}
+    assert app.theme.accent in colors
 
 
 def test_content_tap_dispatched_to_top_view(make_app, point):

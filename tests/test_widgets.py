@@ -1,9 +1,18 @@
-"""Pagination math, buttons, and text truncation — off-screen."""
+"""Pagination math, the Button model, and text truncation — off-screen."""
 
 import pytest
 from PIL import Image, ImageDraw
 
-from wintermode.widgets import draw_button, draw_paginator, paginate, truncate
+from wintermode.widgets import (
+    Button,
+    Circle,
+    Rect,
+    button_auto,
+    paginate,
+    paginator,
+    tap,
+    truncate,
+)
 
 
 def test_paginate_math():
@@ -25,38 +34,109 @@ def test_paginate_rejects_nonpositive_page_size():
 def test_button_pressed_inverts_video(theme, fonts):
     canvas = Image.new("RGB", (200, 60), theme.bg)
     draw = ImageDraw.Draw(canvas)
-    rect = (10, 10, 90, 50)
-    draw_button(draw, rect, "GO", fonts, theme, pressed=True)
+    Button(Rect(10, 10, 90, 50), "GO", pressed=True).draw(draw, fonts, theme)
     # interior pixel: fg; border pixel: border color
     assert canvas.getpixel((50, 30)) == theme.fg
     assert canvas.getpixel((10, 10)) == theme.border
-    draw_button(draw, (100, 10, 180, 50), "GO", fonts, theme, pressed=False)
+    Button(Rect(100, 10, 180, 50), "GO").draw(draw, fonts, theme)
     assert canvas.getpixel((140, 30)) == theme.bg
 
 
-def test_button_returns_its_hitbox(theme, fonts):
+def test_button_border_defaults_to_its_hit(theme, fonts):
+    button = Button(Rect(5, 5, 95, 45), "X")
+    assert button.hit == Rect(5, 5, 95, 45)
+    assert button.border == button.hit
+
+
+def test_disabled_button_is_dim_and_inert(theme, fonts):
     canvas = Image.new("RGB", (100, 100), theme.bg)
     draw = ImageDraw.Draw(canvas)
-    rect = (5, 5, 95, 45)
-    assert draw_button(draw, rect, "X", fonts, theme) == rect
+    button = Button(Rect(10, 10, 90, 50), "GO", enabled=False)
+    button.draw(draw, fonts, theme)
+    assert canvas.getpixel((50, 30)) == theme.bg
+    assert canvas.getpixel((10, 10)) == theme.dim
+    assert not button.contains(50, 30)
+
+
+def test_button_auto_sizes_to_label(theme, fonts):
+    button = button_auto(200, 0, 40, "MODE", fonts)
+    width = max(40, fonts.textwidth("MODE", "regular", 26) + 24)
+    assert button.hit.x1 == 200
+    assert button.hit.x1 - button.hit.x0 == width
+
+
+def test_circle_hit_contains():
+    button = Button(Circle(50, 50, 10))
+    assert button.contains(50, 50)
+    assert button.contains(50, 60)  # the boundary belongs to the circle
+    assert not button.contains(50, 61)
+
+
+def test_rect_keeps_the_old_tuple_protocol():
+    """Rect replaced a tuple alias: indexing/slicing/len must keep working."""
+    rect = Rect(1, 2, 3, 4)
+    assert (rect[0], rect[1], rect[2], rect[3]) == (1, 2, 3, 4)
+    assert rect[2:] == (3, 4)
+    assert len(rect) == 4
+
+
+def test_button_border_false_draws_no_border(theme, fonts):
+    """The docstring documents False as "draws none" — and it must not crash."""
+    canvas = Image.new("RGB", (120, 60), theme.bg)
+    draw = ImageDraw.Draw(canvas)
+    button = Button(Rect(10, 10, 110, 50), border=False)
+    assert button.border is None
+    button.draw(draw, fonts, theme)
+    assert canvas.getpixel((10, 10)) == theme.bg  # nothing painted there
+
+
+def test_circle_label_is_truncated_to_its_hit(theme, fonts):
+    """A label on a circle-hit button fits the circle, like the Rect path."""
+    canvas = Image.new("RGB", (400, 200), theme.bg)
+    draw = ImageDraw.Draw(canvas)
+    Button(Circle(200, 100, 30), "A VERY LONG STATION NAME",
+           border=None).draw(draw, fonts, theme)
+    ink = [x for x in range(400) if canvas.getpixel((x, 100)) != theme.bg]
+    assert ink, "the label must still draw"
+    assert min(ink) >= 170 and max(ink) <= 230  # within the hit circle
+
+
+def test_button_label_color_uses_a_theme_token(theme, fonts):
+    canvas = Image.new("RGB", (100, 60), theme.bg)
+    draw = ImageDraw.Draw(canvas)
+    Button(Rect(10, 10, 90, 50), "GO", border=None,
+           label_color="accent").draw(draw, fonts, theme)
+    colors = {c for _count, c in canvas.getcolors()}
+    assert theme.accent in colors
+
+
+def test_tap_returns_first_matching_action():
+    a = Button(Rect(0, 0, 50, 50))
+    b = Button(Rect(0, 0, 100, 100))
+    assert tap([(a, "a"), (b, "b")], 25, 25) == "a"
+    assert tap([(b, "b"), (a, "a")], 25, 25) == "b"  # first match wins
+    assert tap([(a, "a")], 60, 60) is None
 
 
 def test_paginator_offers_prev_and_next_per_page(theme, fonts):
     canvas = Image.new("RGB", (400, 30), theme.bg)
     draw = ImageDraw.Draw(canvas)
     strip = (0, 0, 400, 30)
-    # single page: no hitboxes
-    assert draw_paginator(draw, strip, 0, 1, fonts, theme) == {
-        "prev": None, "next": None}
+
+    def states(boxes):
+        return {action: button.enabled for button, action in boxes}
+
+    # single page: nothing drawn, no buttons
+    assert paginator(draw, strip, 0, 1, fonts, theme) == []
     # first of three: next only
-    boxes = draw_paginator(draw, strip, 0, 3, fonts, theme)
-    assert boxes["prev"] is None and boxes["next"] is not None
+    assert states(paginator(draw, strip, 0, 3, fonts, theme)) == {
+        "prev": False, "next": True}
     # last of three: prev only
-    boxes = draw_paginator(draw, strip, 2, 3, fonts, theme)
-    assert boxes["prev"] is not None and boxes["next"] is None
+    assert states(paginator(draw, strip, 2, 3, fonts, theme)) == {
+        "prev": True, "next": False}
     # middle: both
-    boxes = draw_paginator(draw, strip, 1, 3, fonts, theme)
-    assert boxes["prev"] is not None and boxes["next"] is not None
+    assert states(paginator(draw, strip, 1, 3, fonts, theme)) == {
+        "prev": True, "next": True}
 
 
 def test_truncate_fits_within_max_width(fonts):

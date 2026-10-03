@@ -1,18 +1,19 @@
-"""Pure-draw helpers every view and module builds on.
+"""The Button model and the pure-draw helpers every view builds on.
 
-Terminal idiom: bordered boxes, inverse video for pressed/selected,
-`[‹ prev] n/m [next ›]` pagination.  Nothing here knows about the app —
-just PIL drawing plus hitbox math, all testable off-screen.
+One Button is a clickable shape (Rect or Circle) with an optional
+border and an optional label; `tap()` turns a list of (Button, action)
+pairs into hit-testing.  Nothing here knows about the app — just PIL
+drawing plus geometry, all testable off-screen.
 """
 
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
+from typing import TypeVar
 
 from wintermode.fonts import SIZE_CARD, SIZE_PAGINATOR, Fonts
 from wintermode.theme import Theme
-
-Rect = tuple[int, int, int, int]  # x0, y0, x1, y1
 
 
 def paginate(items: list, page: int, page_size: int) -> tuple[int, list]:
@@ -45,162 +46,252 @@ def text_y(fonts: Fonts, text: str, y0: float, y1: float, weight: str = "regular
     return fonts.center_y(text, weight, size, y0, y1)
 
 
-def draw_button(
-    draw,
-    rect: Rect,
-    label: str,
-    fonts: Fonts,
-    theme: Theme,
-    weight: str = "regular",
-    size: int = SIZE_CARD,
-    pressed: bool = False,
-    enabled: bool = True,
-) -> Rect:
-    """A bordered box with a centered label; pressed = inverse video.
+# --- the Button model -------------------------------------------------------
 
-    Disabled buttons draw dim and inert: the caller simply skips
-    registering their hitbox.  A label too wide for the box is
-    truncated, never overprinted on the neighbouring card.
+
+@dataclass(frozen=True)
+class Rect:
+    """A half-open rectangle hit shape: x0 <= x < x1, as it always was.
+
+    Also indexable/sliceable/unpackable like the tuple alias it
+    replaced, so older callers keep working.
     """
-    x0, y0, x1, y1 = rect
-    if not enabled:
-        draw.rectangle(rect, fill=theme.bg)
-        draw.rectangle(rect, outline=theme.dim)
-        label = truncate(fonts, label, max(1, x1 - x0 - 12), weight, size)
-        text_x = x0 + (x1 - x0 - fonts.textwidth(label, weight, size)) / 2
-        fonts.draw_text(draw, (text_x, text_y(fonts, label, y0, y1, weight,
-                                              size)),
-                        label, weight, size, theme.dim)
-        return rect
-    fill = theme.fg if pressed else theme.bg
-    text_fill = theme.bg if pressed else theme.fg
-    draw.rectangle(rect, fill=fill)
-    draw.rectangle(rect, outline=theme.border)
-    label = truncate(fonts, label, max(1, x1 - x0 - 12), weight, size)
-    text_x = x0 + (x1 - x0 - fonts.textwidth(label, weight, size)) / 2
-    fonts.draw_text(draw, (text_x, text_y(fonts, label, y0, y1, weight, size)),
-                    label, weight, size, text_fill)
-    return rect
+
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+    def contains(self, x: float, y: float) -> bool:
+        return self.x0 <= x < self.x1 and self.y0 <= y < self.y1
+
+    def center(self) -> tuple[float, float]:
+        return ((self.x0 + self.x1) / 2, (self.y0 + self.y1) / 2)
+
+    def __iter__(self):
+        yield from (self.x0, self.y0, self.x1, self.y1)
+
+    def __len__(self) -> int:
+        return 4
+
+    def __getitem__(self, index):
+        return (self.x0, self.y0, self.x1, self.y1)[index]
 
 
-def draw_button_auto(
-    draw,
-    anchor_x1: int,
-    y0: int,
-    height: int,
-    label: str,
-    fonts: Fonts,
-    theme: Theme,
-    weight: str = "regular",
-    size: int = SIZE_CARD,
-    pressed: bool = False,
-    enabled: bool = True,
-    pad: int = 12,
-    min_width: int = 40,
-) -> Rect:
-    """A right-anchored button sized to its label; returns its rect."""
-    width = max(min_width, fonts.textwidth(label, weight, size) + 2 * pad)
-    rect = (anchor_x1 - width, y0, anchor_x1, y0 + height)
-    draw_button(draw, rect, label, fonts, theme, weight=weight, size=size,
-                pressed=pressed, enabled=enabled)
-    return rect
+@dataclass(frozen=True)
+class Circle:
+    """A circular hit shape; the boundary belongs to the circle."""
+
+    cx: float
+    cy: float
+    r: float
+
+    def contains(self, x: float, y: float) -> bool:
+        return (x - self.cx) ** 2 + (y - self.cy) ** 2 <= self.r ** 2
+
+    def center(self) -> tuple[float, float]:
+        return (self.cx, self.cy)
 
 
-def draw_circle(
-    draw,
-    center: tuple[float, float],
-    radius: int,
-    fill,
-    outline=None,
-    width: int = 3,
-) -> Rect:
-    """A filled circle at `center`; returns its bounding rect."""
+Shape = Rect | Circle
+
+
+def _draw_circle(draw, center, radius, fill, outline=None, width: int = 3):
+    """A filled circle at `center`; the Button circle-border primitive."""
     x, y = center
     rect = (int(x - radius), int(y - radius), int(x + radius), int(y + radius))
     draw.ellipse(rect, fill=fill, outline=outline, width=width)
-    return rect
 
 
-def draw_paginator(
-    draw,
-    strip: Rect,
-    page: int,
-    pages: int,
-    fonts: Fonts,
-    theme: Theme,
-    size: int = SIZE_PAGINATOR,
-) -> dict[str, Rect | None]:
-    """Centered `[‹ prev]  n/m  [next ›]`; returns prev/next hitboxes."""
-    x0, y0, x1, y1 = strip
-    result: dict[str, Rect | None] = {"prev": None, "next": None}
-    if pages <= 1:
-        return result
-    label_prev = "[‹ prev]"
-    label_next = "[next ›]"
-    counter = f"{page + 1}/{pages}"
-    prev_w = fonts.textwidth(label_prev, "regular", size)
-    next_w = fonts.textwidth(label_next, "regular", size)
-    counter_w = fonts.textwidth(counter, "regular", size)
-    total = prev_w + next_w + counter_w + 40
-    cx = x0 + (x1 - x0) / 2
-    ty = text_y(fonts, label_prev, y0, y1, size=size)
+@dataclass
+class Button:
+    """One clickable thing: a hit shape, an optional border, an optional label.
 
-    prev_x = cx - total / 2
-    counter_x = prev_x + prev_w + 20
-    next_x = counter_x + counter_w + 20
+    `border=True` (the default) draws the outline along the hit shape;
+    `None`/`False` draws none; an explicit Shape overrides — the map's
+    station button hits at HIT_PAD radius but paints only its small dot.
+    Disabled buttons are drawn dim and `contains()` is False, so a
+    caller can keep them in the list without guarding every tap.
+    """
 
-    prev_color = theme.fg if page > 0 else theme.dim
-    next_color = theme.fg if page < pages - 1 else theme.dim
-    fonts.draw_text(draw, (prev_x, ty), label_prev, "regular", size,
-                    prev_color)
-    fonts.draw_text(draw, (counter_x, ty), counter, "regular", size,
-                    theme.dim)
-    fonts.draw_text(draw, (next_x, ty), label_next, "regular", size,
-                    next_color)
+    hit: Shape
+    label: str | None = None
+    border: Shape | bool | None = True
+    weight: str = "regular"
+    size: int = SIZE_CARD
+    enabled: bool = True
+    pressed: bool = False
+    border_color: str = "border"  # theme token: "border" | "fg" | "dim"
+    label_color: str | None = None  # theme token; None = theme.fg
+    border_width: int = 1
 
-    if page > 0:
-        result["prev"] = (int(prev_x), y0, int(prev_x + prev_w), y1)
-    if page < pages - 1:
-        result["next"] = (int(next_x), y0, int(next_x + next_w), y1)
-    return result
+    def __post_init__(self) -> None:
+        if self.border is True:
+            self.border = self.hit
+        elif self.border is False:
+            self.border = None  # documented as "draws none" — never a shape
+
+    def contains(self, x: float, y: float) -> bool:
+        return self.enabled and self.hit.contains(x, y)
+
+    def draw(self, draw, fonts: Fonts, theme: Theme) -> None:
+        """Fill + optional outline + optional centered label.
+
+        Disabled wins over pressed (dim box, dim text).  Pressed is
+        inverse video.  Fill and outline paint the *border* shape, never
+        the hit shape — a station button hits at radius 22 but its bg
+        fill must not erase the track lines around its 8px dot.
+        """
+        if not self.enabled:
+            fill, text_color, outline = theme.bg, theme.dim, theme.dim
+        elif self.pressed:
+            fill = theme.fg
+            text_color, outline = theme.bg, getattr(theme, self.border_color)
+        else:
+            fill = theme.bg
+            text_color = (getattr(theme, self.label_color)
+                          if self.label_color else theme.fg)
+            outline = getattr(theme, self.border_color)
+        border = self.border
+        if border is not None:
+            if isinstance(border, Rect):
+                rect = (int(border.x0), int(border.y0),
+                        int(border.x1), int(border.y1))
+                draw.rectangle(rect, fill=fill)
+                draw.rectangle(rect, outline=outline, width=self.border_width)
+            else:
+                _draw_circle(draw, (border.cx, border.cy), border.r, fill=fill,
+                             outline=outline, width=self.border_width)
+        if self.label:
+            self._draw_label(draw, fonts, text_color)
+
+    def _draw_label(self, draw, fonts: Fonts, color) -> None:
+        # the label belongs to what is drawn (the border shape); the hit
+        # shape may be a larger tap target, e.g. the bar's full-cell hits
+        label = self.label
+        shape = self.border if isinstance(self.border, (Rect, Circle)) \
+            else self.hit
+        if isinstance(shape, Rect):
+            max_w = max(1, shape.x1 - shape.x0 - 12)
+            label = truncate(fonts, label, max_w, self.weight, self.size)
+            text_x = shape.x0 + (shape.x1 - shape.x0
+                                 - fonts.textwidth(label, self.weight,
+                                                   self.size)) / 2
+            ty = text_y(fonts, label, shape.y0, shape.y1,
+                        self.weight, self.size)
+        else:
+            cx, cy = shape.center()
+            label = truncate(fonts, label, max(1, 2 * shape.r - 12),
+                             self.weight, self.size)
+            w, h = fonts.textsize(label, self.weight, self.size)
+            text_x, ty = cx - w / 2, cy - h / 2
+        fonts.draw_text(draw, (text_x, ty), label, self.weight, self.size,
+                        color)
 
 
-def draw_scroller(
-    draw,
-    strip: Rect,
-    offset: int,
-    visible: int,
-    total: int,
-    fonts: Fonts,
-    theme: Theme,
-    size: int = SIZE_PAGINATOR,
-) -> dict[str, Rect | None]:
-    """Centered `[▲]  [▼]` scroll buttons; returns up/down hitboxes.
+T = TypeVar("T")
 
-    The scroll version of draw_paginator: a direction that cannot scroll
-    is drawn dim and gets no hitbox (grey and inert at the ends).
+
+def tap(buttons: list[tuple[Button, T]], x: float, y: float) -> T | None:
+    """The action of the first button containing (x, y); None when none does.
+
+    Disabled buttons never match, so views keep inert buttons in the
+    list instead of tracking which rects are live.
+    """
+    for button, action in buttons:
+        if button.contains(x, y):
+            return action
+    return None
+
+
+def button_width(fonts: Fonts, label: str, weight: str = "regular",
+                 size: int = SIZE_CARD, *, pad: int = 12,
+                 min_width: int = 40) -> int:
+    """The box width that fits `label` with `pad` on each side."""
+    return max(min_width, fonts.textwidth(label, weight, size) + 2 * pad)
+
+
+def button_auto(anchor_x1: int, y0: int, height: int, label: str,
+                fonts: Fonts, *, weight: str = "regular",
+                size: int = SIZE_CARD, pressed: bool = False,
+                enabled: bool = True, pad: int = 12,
+                min_width: int = 40,
+                label_color: str | None = None) -> Button:
+    """A right-anchored button sized to its label; constructs, never draws."""
+    width = button_width(fonts, label, weight, size, pad=pad,
+                         min_width=min_width)
+    return Button(Rect(anchor_x1 - width, y0, anchor_x1, y0 + height), label,
+                  weight=weight, size=size, pressed=pressed, enabled=enabled,
+                  label_color=label_color)
+
+
+def strip_start(x0: float, x1: float, total: float) -> float:
+    """The x where a centered `total`-wide row starts inside the strip."""
+    return x0 + (x1 - x0 - total) / 2
+
+
+def clamp_offset(offset: int, visible: int, total: int) -> int:
+    """A scroll offset clamped so the visible window never passes the end.
+
+    Clamp BEFORE slicing: a collection that shrank under a stale offset
+    would otherwise render an empty/past-end frame until something else
+    happens to re-render it.
+    """
+    return min(max(offset, 0), max(total - visible, 0))
+
+
+def paginator(draw, strip: tuple[int, int, int, int], page: int, pages: int,
+              fonts: Fonts, theme: Theme, *,
+              size: int = SIZE_PAGINATOR) -> list[tuple[Button, str]]:
+    """Centered boxed `‹ prev` / `next ›` with a plain dim n/m between.
+
+    Draws everything it returns.  pages <= 1 draws nothing (no counter
+    either) and returns [].  A direction that cannot move is still drawn
+    — dim and inert at the ends.
     """
     x0, y0, x1, y1 = strip
-    result: dict[str, Rect | None] = {"up": None, "down": None}
+    if pages <= 1:
+        return []
+    prev_w = button_width(fonts, "‹ prev", size=size)
+    next_w = button_width(fonts, "next ›", size=size)
+    counter = f"{page + 1}/{pages}"
+    counter_w = fonts.textwidth(counter, "regular", size)
+    total = prev_w + next_w + counter_w + 40
+    cursor = strip_start(x0, x1, total)
+    prev = Button(Rect(cursor, y0, cursor + prev_w, y1), "‹ prev", size=size,
+                  enabled=page > 0)
+    prev.draw(draw, fonts, theme)
+    cursor += prev_w + 20
+    fonts.draw_text(draw, (cursor, text_y(fonts, counter, y0, y1, size=size)),
+                    counter, "regular", size, theme.dim)
+    cursor += counter_w + 20
+    nxt = Button(Rect(cursor, y0, cursor + next_w, y1), "next ›", size=size,
+                 enabled=page < pages - 1)
+    nxt.draw(draw, fonts, theme)
+    return [(prev, "prev"), (nxt, "next")]
+
+
+def scroller(draw, strip: tuple[int, int, int, int], offset: int,
+             visible: int, total: int, fonts: Fonts, theme: Theme, *,
+             size: int = SIZE_PAGINATOR) -> list[tuple[Button, str]]:
+    """Centered boxed `▲` / `▼`; [] (draws nothing) when neither moves.
+
+    The direction that cannot scroll is drawn dim and inert.
+    """
+    x0, y0, x1, y1 = strip
     can_up = offset > 0
     can_down = offset + visible < total
     if not (can_up or can_down):
-        return result
-    label_up = "[▲]"
-    label_down = "[▼]"
-    up_w = fonts.textwidth(label_up, "regular", size)
-    down_w = fonts.textwidth(label_down, "regular", size)
+        return []
+    up_w = button_width(fonts, "▲", size=size)
+    down_w = button_width(fonts, "▼", size=size)
     total_w = up_w + down_w + 20
-    cx = x0 + (x1 - x0) / 2
-    ty = text_y(fonts, label_up, y0, y1, size=size)
-    up_x = cx - total_w / 2
-    down_x = up_x + up_w + 20
-    fonts.draw_text(draw, (up_x, ty), label_up, "regular", size,
-                    theme.fg if can_up else theme.dim)
-    fonts.draw_text(draw, (down_x, ty), label_down, "regular", size,
-                    theme.fg if can_down else theme.dim)
-    if can_up:
-        result["up"] = (int(up_x), y0, int(up_x + up_w), y1)
-    if can_down:
-        result["down"] = (int(down_x), y0, int(down_x + down_w), y1)
-    return result
+    cursor = strip_start(x0, x1, total_w)
+    up = Button(Rect(cursor, y0, cursor + up_w, y1), "▲", size=size,
+                enabled=can_up)
+    up.draw(draw, fonts, theme)
+    cursor += up_w + 20
+    down = Button(Rect(cursor, y0, cursor + down_w, y1), "▼", size=size,
+                  enabled=can_down)
+    down.draw(draw, fonts, theme)
+    return [(up, "up"), (down, "down")]

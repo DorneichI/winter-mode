@@ -52,6 +52,12 @@ def git_commit(seed: Path, name: str, text: str) -> str:
     return git_sha(seed)
 
 
+def tap_center(view, button, ctx):
+    """Tap a Button at its center; the view must consume the tap."""
+    x, y = button.hit.center()
+    assert view.on_tap(int(x), int(y), ctx) is True
+
+
 class FakeLCD:
     """Duck-types the Display surface the app uses; records blits."""
 

@@ -1,4 +1,5 @@
-"""The boston module: map, hitboxes, and the trip alert state machine."""
+"""The boston module: map, station buttons, and the trip alert state
+machine."""
 
 import json
 import math
@@ -6,6 +7,7 @@ import threading
 import time
 
 import pytest
+from conftest import tap_center
 from PIL import Image, ImageDraw
 
 from wintermode.modules.boston import google
@@ -87,15 +89,18 @@ def alert_on_stack(ctx):
     return ctx.nav.top
 
 
-def tap_rect(view, rect, ctx):
-    assert view.on_tap((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2,
-                       ctx) is True
+def station_button(boston, vid):
+    return next(b for b, bvid in boston._station_buttons if bvid == vid)
+
+
+def alert_button(alert, action):
+    return next(b for b, a in alert._buttons if a == action)
 
 
 def tap_footer(alert, action, ctx):
-    rect = alert._footer[action]
-    assert rect is not None, f"{action!r} button should be tappable"
-    tap_rect(alert, rect, ctx)
+    button = alert_button(alert, action)
+    assert button.enabled, f"{action!r} button should be tappable"
+    tap_center(alert, button, ctx)
 
 
 def render(view, ctx):
@@ -165,15 +170,18 @@ def test_bad_graph_entries_are_skipped(boston, tmp_path, monkeypatch):
     assert module._edges == []
 
 
-def test_map_render_builds_a_hitbox_per_station(boston, theme, fonts, ctx):
+def test_map_render_builds_a_button_per_station(boston, theme, fonts, ctx):
     c = ctx(registry=None)
     _, draw = canvas()
     assert boston.render(draw, c) is True
-    assert len(boston._hitboxes) == len(boston._stations)
-    for rect, vid in boston._hitboxes.items():
+    assert len(boston._station_buttons) == len(boston._stations)
+    for button, vid in boston._station_buttons:
         station = boston._stations[vid]
         cx, cy = boston._place(station, c)
-        assert rect[0] <= cx <= rect[2] and rect[1] <= cy <= rect[3]
+        assert (button.hit.cx, button.hit.cy) == pytest.approx((cx, cy))
+        # the hit circle reaches HIT_PAD; the painted dot stays small
+        assert button.hit.r == boston_mod.HIT_PAD
+        assert button.border.r == boston_mod.STATION_RADIUS
 
 
 def test_map_draws_line_colors(boston, theme, fonts, ctx):
@@ -195,9 +203,7 @@ def test_station_tap_pushes_confirm_alert(boston, trips_fetch, theme, fonts,
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     assert isinstance(alert, TripAlert)
     assert alert._state == "confirm"
@@ -228,6 +234,67 @@ def test_tap_picks_nearest_station_not_first_hitbox(boston, trips_fetch,
     assert fetch.calls[0]["lat"] == pytest.approx(42.356395)
 
 
+def test_station_tie_keeps_the_later_appended(boston, trips_fetch, theme,
+                                              fonts, ctx, config, monkeypatch):
+    """An exact-distance tie keeps main's rule: the later station wins."""
+    fetch = trips_fetch()
+    fetch.release = None
+    boston._fetch = fetch
+    c = make_ctx(ctx, config)
+    boston._stations = {
+        "a": {"id": "a", "name": "A", "x": 0.0, "y": 0.0,
+              "lat": 1.0, "lon": 1.0},
+        "b": {"id": "b", "name": "B", "x": 1.0, "y": 1.0,
+              "lat": 2.0, "lon": 2.0},
+    }
+    boston._edges = []  # the real graph's edge endpoints bypass _stations
+    places = {"a": (400.0, 200.0), "b": (404.0, 200.0)}
+    monkeypatch.setattr(boston, "_place", lambda station, ctx: places[station["id"]])
+    render(boston, c)
+    assert boston.on_tap(402, 200, c) is True  # equidistant from both
+    fetch.wait_for_calls(1)
+    assert fetch.calls[0]["lat"] == pytest.approx(2.0)  # main picked 'b'
+
+
+def test_station_tap_before_the_first_render(boston, trips_fetch, ctx, config,
+                                             monkeypatch):
+    """on_tap recomputes centers, so it needs no prior render to hit."""
+    fetch = trips_fetch()
+    fetch.release = None
+    boston._fetch = fetch
+    c = make_ctx(ctx, config)
+    boston._stations = {
+        "a": {"id": "a", "name": "A", "x": 0.0, "y": 0.0,
+              "lat": 1.0, "lon": 1.0},
+    }
+    boston._edges = []
+    monkeypatch.setattr(boston, "_place", lambda station, ctx: (400.0, 200.0))
+    assert boston._station_buttons == []  # never rendered
+    assert boston.on_tap(400, 200, c) is True
+    fetch.wait_for_calls(1)
+    assert fetch.calls[0]["lat"] == pytest.approx(1.0)
+
+
+def test_station_hit_boundary_is_inclusive(boston, trips_fetch, theme, fonts,
+                                           ctx, config, monkeypatch):
+    """A tap exactly HIT_PAD from the center hits; one pixel farther misses."""
+    fetch = trips_fetch()
+    fetch.release = None
+    boston._fetch = fetch
+    c = make_ctx(ctx, config)
+    boston._stations = {
+        "a": {"id": "a", "name": "A", "x": 0.0, "y": 0.0,
+              "lat": 1.0, "lon": 1.0},
+    }
+    boston._edges = []
+    monkeypatch.setattr(boston, "_place", lambda station, ctx: (400.0, 200.0))
+    render(boston, c)
+    pad = boston_mod.HIT_PAD
+    assert boston.on_tap(400 + pad, 200, c) is True
+    fetch.wait_for_calls(1)
+    assert boston.on_tap(400 + pad + 1, 200, c) is False
+
+
 def test_tap_without_address_shows_descriptive_error(boston, trips_fetch,
                                                      theme, fonts, ctx,
                                                      config):
@@ -235,9 +302,7 @@ def test_tap_without_address_shows_descriptive_error(boston, trips_fetch,
     boston._fetch = fetch
     c = ctx(registry=None)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     assert alert._state == "error"
     assert "address" in alert._error
@@ -252,9 +317,7 @@ def test_tap_without_key_shows_descriptive_error(boston, trips_fetch, theme,
                               "mode": "transit", "api_key": ""}})
     c = ctx(registry=None)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     assert alert._state == "error"
     assert "api key" in alert._error
@@ -268,9 +331,7 @@ def test_ok_with_unchanged_mode_waits_for_inflight_query(
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     render(alert, c)
     tap_footer(alert, "ok", c)
@@ -289,12 +350,10 @@ def test_ok_with_changed_mode_requeries(
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     render(alert, c)
-    tap_rect(alert, alert._mode_rect, c)  # cycle transit -> walk
+    tap_center(alert, alert_button(alert, "mode"), c)  # cycle transit -> walk
     assert alert._mode == "walk"
     tap_footer(alert, "ok", c)
     assert alert._state == "computing"
@@ -310,9 +369,7 @@ def test_cancel_abandons_and_stale_result_is_dropped(
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     render(alert, c)
     tap_footer(alert, "cancel", c)
@@ -328,12 +385,10 @@ def test_bar_back_pop_abandons_the_query(boston, trips_fetch, theme, fonts,
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     seq = alert._seq
-    c.nav.pop()  # what the bar's [‹ BACK] does
+    c.nav.pop()  # what the bar's ‹ BACK does
     render(boston, c)
     assert boston._alert is None
     assert boston._seq > seq  # the in-flight result is stale
@@ -346,9 +401,7 @@ def test_web_abandon_action_pops_the_alert(boston, trips_fetch, theme, fonts,
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     render(alert, c)
     boston.on_action("abandon", c)
@@ -364,19 +417,19 @@ def test_results_arrows_cycle_itineraries(boston, trips_fetch, theme, fonts,
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     render(alert, c)
     tap_footer(alert, "ok", c)  # result already pending -> results
     render(alert, c)
     assert alert._state == "results"
-    assert alert._footer["<"] is None  # first itinerary: < grey and inert
+    # first itinerary: < grey and inert
+    assert not alert_button(alert, "<").enabled
     tap_footer(alert, ">", c)
     render(alert, c)
     assert alert._index == 1
-    assert alert._footer[">"] is None  # last itinerary: > grey and inert
+    # last itinerary: > grey and inert
+    assert not alert_button(alert, ">").enabled
     tap_footer(alert, "done", c)
     assert len(c.nav) == 1
 
@@ -388,24 +441,22 @@ def test_long_leg_list_gets_scroll_buttons(boston, trips_fetch, theme, fonts,
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     render(alert, c)
     tap_footer(alert, "ok", c)
     render(alert, c)
     assert alert._state == "results"
-    assert alert._scroller["down"] is not None
-    assert alert._scroller["up"] is None
-    tap_rect(alert, alert._scroller["down"], c)
+    assert alert_button(alert, "down").enabled
+    assert not alert_button(alert, "up").enabled
+    tap_center(alert, alert_button(alert, "down"), c)
     render(alert, c)
     assert alert._leg_offset == 1
     # scrolling to the end leaves only the up button
     alert._leg_offset = len(legs)
     render(alert, c)
-    assert alert._scroller["up"] is not None
-    assert alert._scroller["down"] is None
+    assert alert_button(alert, "up").enabled
+    assert not alert_button(alert, "down").enabled
 
 
 def test_query_error_shows_descriptive_alert(boston, trips_fetch, theme,
@@ -414,9 +465,7 @@ def test_query_error_shows_descriptive_alert(boston, trips_fetch, theme,
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     # the error surfaces immediately, even while confirming
     render(alert, c)
@@ -460,9 +509,7 @@ def test_empty_trip_list_reads_as_no_route(boston, trips_fetch, theme, fonts,
     boston._fetch = fetch
     c = make_ctx(ctx, config)
     render(boston, c)
-    rect = next(r for r, vid in boston._hitboxes.items()
-                if vid == "park_street")
-    tap_rect(boston, rect, c)
+    tap_center(boston, station_button(boston, "park_street"), c)
     alert = alert_on_stack(c)
     render(alert, c)
     tap_footer(alert, "ok", c)  # zero routes surface on confirm
